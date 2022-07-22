@@ -1,10 +1,12 @@
 ﻿// #define FAIRY_GUI
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
+
 #if FAIRY_GUI
 using FairyGUI;
 
@@ -25,7 +27,7 @@ public static class GenUIComInitScript
     private const string CtrlSuffix = "_Ctrl";
     private const string TransSuffix = "_Trans";
 
-    private const string FariyUICsScriptDst = @"Assets\Scripts\FairyUI\Gen";
+    private const string FariyUICsScriptDst = @"Assets\Scripts\UI\Gen";
     private const string FairyUILuaScriptDst = @"Assets\LuaScripts\UI\Gen";
 
     private static readonly List<Type> NoGen = new List<Type>
@@ -327,18 +329,26 @@ public static class GenUIComInitScript
 
     #region Unity UI
 
-    private const string UnityUICsScriptDst = @"Assets\Scripts\UnityUI\Gen";
+    private const string LuaModuleSuffix = "_Init";
+    private const string UnityUICsScriptDst = @"Assets\Scripts\UI\Gen";
+    private const string UnityUILuaScriptDst = @"Assets\LuaScripts\UI\Gen";
+
+    [MenuItem("Assets/生成选中的Unity UI Lua 控件脚本", priority = 1)]
+    private static void GenSelectUILuaScript()
+    {
+        foreach (var o in Selection.objects)
+            if (o is GameObject go)
+                GenLuaScript(o.name, $"{o.name}{LuaModuleSuffix}", go);
+
+        AssetDatabase.Refresh();
+    }
 
     [MenuItem("Assets/生成选中的Unity UI Cs 控件脚本", priority = 15)]
     private static void GenSelectedUICsScript()
     {
         foreach (var o in Selection.objects)
-        {
             if (o is GameObject go)
-            {
                 GenCsScript(o.name, go);
-            }
-        }
 
         AssetDatabase.Refresh();
     }
@@ -437,6 +447,97 @@ public static class GenUIComInitScript
         var path = Path.Combine(UnityUICsScriptDst);
         if (!Directory.Exists(path)) Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, $"{scriptName}.cs"), builder.ToString());
+    }
+
+    private static void GenLuaScript(string moduleName, string scriptName, GameObject uiObj)
+    {
+        var statementBuilder = new StringBuilder();
+        var annotationBuilder = new StringBuilder();
+        annotationBuilder.Append(@"--[[
+***************************
+该脚本自动生成
+ 		<请勿修改>
+  " +
+                                 $"Date:{DateTime.Now:yyyy-MM-dd HH:mm:ss}\n****************************\n]]\n");
+        annotationBuilder.Append($"---@return {moduleName}\n");
+        annotationBuilder.Append($"---@param {ParamName} UnityEngine.Transform\n");
+        annotationBuilder.Append($"local function {LuaFuncName}({ParamName})\n");
+        annotationBuilder.Append($"\t---@class {moduleName}\n");
+        statementBuilder.Append($"\tlocal {LuaInstName}" + " = {}\n");
+        var behaviours = uiObj.GetComponents<Behaviour>();
+        if (behaviours != null)
+        {
+            foreach (var uiBehaviour in behaviours)
+            {
+                var type = uiBehaviour.GetType();
+                var fieldName = type.Name;
+                // fieldName = fieldName.ToLower().Substring(0, 1) + fieldName.Substring(1);
+                var typeFullName = type.FullName;
+                annotationBuilder.Append($"\t---@field {fieldName} {typeFullName}\n");
+                statementBuilder.Append(
+                    $"\t{LuaInstName}.{fieldName} = {ParamName}:GetComponent(typeof(CS.{typeFullName}))\n");
+            }
+        }
+
+        var cmpNameHash = new Dictionary<string, int>();
+        foreach (Transform child in uiObj.transform)
+        {
+            var childBehaviours = child.GetComponents<Behaviour>();
+            var field = child.name;
+            var fieldType = typeof(Transform).FullName;
+            var fieldAnnotation = $"\t---@field {field} {fieldType}\n";
+            var statement = $"{ParamName}:Find(\"{child.name}\")";
+            int fieldCount;
+            var duplicate = false;
+            if (childBehaviours != null)
+            {
+                if (childBehaviours.Length == 1)
+                {
+                    var behaviour = childBehaviours[0];
+                    var type = behaviour.GetType();
+                    fieldType = type.FullName;
+                    fieldAnnotation = $"\t---@field {field} {fieldType}\n";
+                    statement += $":GetComponent(typeof(CS.{type.FullName}))";
+                }
+                else if (childBehaviours.Length > 1)
+                {
+                    fieldType = $"{moduleName}_{child.name}";
+                    cmpNameHash.TryGetValue(fieldType, out fieldCount);
+                    var fieldName = fieldType;
+                    if (fieldCount >= 1) fieldName += cmpNameHash[fieldType];
+                    var subModule = $"{fieldName}{LuaModuleSuffix}";
+                    fieldAnnotation = $"\t---@field {field} {fieldName}\n";
+                    statement = $"require '{subModule}':{LuaFuncName}({ParamName}:Find(\"{child.name}\"))";
+                    GenLuaScript(fieldName, subModule, child.gameObject);
+                }
+            }
+            // else
+            // {
+            // return;
+            // }
+
+            if (!cmpNameHash.ContainsKey(fieldType))
+                cmpNameHash[fieldType] = 0;
+            cmpNameHash[fieldType]++;
+            cmpNameHash.TryGetValue(fieldType, out fieldCount);
+            if (fieldCount > 1) field += fieldCount - 1;
+            // fieldName = fieldName.ToLower().Substring(0, 1) + fieldName.Substring(1);
+            annotationBuilder.Append(fieldAnnotation);
+            statementBuilder.Append($"\t{LuaInstName}.{field} = {statement}\n");
+        }
+
+        annotationBuilder.Append($"\t---@field {RootComName} UnityEngine.Transform\n");
+        statementBuilder.Append($"\t{LuaInstName}.{RootComName} = {ParamName}\n");
+        statementBuilder.Append($"\treturn {LuaInstName}\n");
+        statementBuilder.Append("end\n");
+        statementBuilder.Append("\nreturn {" + LuaFuncName + " = " + LuaFuncName + "}");
+
+        var builder = new StringBuilder();
+        builder.Append(annotationBuilder);
+        builder.Append(statementBuilder);
+        var path = Path.Combine(UnityUILuaScriptDst);
+        if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, $"{scriptName}.lua"), builder.ToString());
     }
 
     #endregion
