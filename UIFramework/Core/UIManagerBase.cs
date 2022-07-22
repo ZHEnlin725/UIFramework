@@ -37,6 +37,37 @@ namespace UIFramework.Core
         {
         }
 
+        public virtual void RegisterLuaWindow(string name, string moduleName, Type type, bool isBackground,
+            params string[] dependencies)
+        {
+#if UNITY_EDITOR
+            Debug.Assert(type.IsSubclassOf(typeof(LuaWindowBase<TUIObj>)));
+#endif
+            RegisterWindow(name, () => (LuaWindowBase<TUIObj>) Activator.CreateInstance(type, moduleName), isBackground,
+                dependencies);
+        }
+
+        public virtual void RegisterLuaWindow<T>(string name, string moduleName, bool isBackground,
+            params string[] dependencies)
+        {
+            var type = typeof(T);
+#if UNITY_EDITOR
+            Debug.Assert(type.IsSubclassOf(typeof(LuaWindowBase<TUIObj>)));
+#endif
+            RegisterWindow(name, () => (LuaWindowBase<TUIObj>) Activator.CreateInstance(type, moduleName), isBackground,
+                dependencies);
+        }
+
+        public virtual void RegisterWindow(string name, Type type, bool isBackground,
+            params string[] dependencies)
+        {
+#if UNITY_EDITOR
+            Debug.Assert(typeof(IWindow<TUIObj>).IsAssignableFrom(type));
+            Debug.Assert(type.GetConstructor(new Type[0]) != null);
+#endif
+            RegisterWindow(name, () => (IWindow<TUIObj>) Activator.CreateInstance(type), isBackground, dependencies);
+        }
+
         /// <summary>
         /// 注册窗口信息
         /// </summary>
