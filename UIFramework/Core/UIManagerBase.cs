@@ -26,7 +26,16 @@ namespace UIFramework.Core
             public float SoringOrder;
             public bool IsActive;
             public bool IsLoaded;
+
+            /// <summary>
+            /// 是否处于正在关闭
+            /// </summary>
             public bool IsClosing;
+
+            /// <summary>
+            /// 是否处于正在销毁
+            /// </summary>
+            public bool IsDestroying;
         }
 
         private readonly List<string> windowStack = new List<string>();
@@ -104,7 +113,7 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (window.IsActive || window.IsClosing)
+                if (window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
 
                 if (!window.IsLoaded)
@@ -207,10 +216,8 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (window.IsClosing || !window.IsLoaded || !window.IsActive)
-                {
+                if (!window.IsLoaded || !window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
-                }
 
                 if (removeWindowStack)
                 {
@@ -240,32 +247,34 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (window.IsLoaded)
+                if (!window.IsLoaded || window.IsDestroying)
+                    return;
+
+                window.IsDestroying = true;
+
+                windowStack.Remove(name);
+                updatableWindows.Remove(window);
+
+                if (!window.IsClosing)
                 {
-                    windowStack.Remove(name);
-                    updatableWindows.Remove(window);
-
-                    if (!window.IsClosing)
-                    {
-                        await InternalClose(window);
-                    }
-                    else
-                    {
-                        void WaitForWindowClosed()
-                        {
-                            while (window.IsClosing) Task.Delay(1);
-                        }
-
-                        await Task.Run(WaitForWindowClosed);
-                    }
-
-                    var ui = window.Inst.ui;
-                    window.Inst.OnDestroy();
-                    Destroy(ui);
-
-                    window.Inst = null;
-                    window.IsLoaded = false;
+                    await InternalClose(window);
                 }
+                else
+                {
+                    void WaitForWindowClosed()
+                    {
+                        while (window.IsClosing) Task.Delay(1);
+                    }
+
+                    await Task.Run(WaitForWindowClosed);
+                }
+
+                var ui = window.Inst.ui;
+                window.Inst.OnDestroy();
+                Destroy(ui);
+                window.Inst = null;
+                window.IsLoaded = false;
+                window.IsDestroying = false;
             }
         }
 
