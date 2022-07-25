@@ -1,4 +1,5 @@
 ﻿using System;
+using UnityEngine;
 
 namespace UIFramework.Core
 {
@@ -22,12 +23,26 @@ namespace UIFramework.Core
         protected LuaWindowBase(string modulename)
         {
             luaTable = getLuaTable(modulename);
+            if (luaTable == null)
+                throw new ArgumentException($"Failed get lua table with {modulename}");
             createCallback = getCreateCallback();
+            if (createCallback == null)
+                Debug.LogWarning($"{modulename} [createCallback] not found !!!");
             enableCallback = getEnableCallback();
+            if (enableCallback == null)
+                Debug.LogWarning($"{modulename} [enableCallback] not found !!!");
             updateCallback = getUpdateCallback();
+            if (updateCallback == null)
+                Debug.LogWarning($"{modulename} [updateCallback] not found !!!");
             disableCallback = getDisableCallback();
+            if (disableCallback == null)
+                Debug.LogWarning($"{modulename} [disableCallback] not found !!!");
             destroyCallback = getDestoryCallback();
+            if (destroyCallback == null)
+                Debug.LogWarning($"{modulename} [destroyCallback] not found !!!");
             handleMessageCallback = getHandleMessageCallback();
+            if (handleMessageCallback == null)
+                Debug.LogWarning($"{modulename} [handleMessageCallback] not found !!!");
         }
 
         ~LuaWindowBase()
