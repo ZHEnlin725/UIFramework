@@ -102,7 +102,7 @@ namespace UIFramework.Core
                 Dependencies = dependencies
             };
         }
-        
+
         /// <summary>
         /// 打开窗口
         /// </summary>
@@ -256,6 +256,24 @@ namespace UIFramework.Core
 #pragma warning restore 4014
         }
 
+        public void CloseAllWindows(int layer, bool removeWindowCache = true)
+        {
+            for (int i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer == layer)
+#pragma warning disable 4014
+                    CloseWindow(windowStack[i], removeWindowCache);
+#pragma warning restore 4014
+        }
+
+        public void CloseAllWindowsExceptLayer(int layer, bool removeWindowCache = true)
+        {
+            for (int i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer != layer)
+#pragma warning disable 4014
+                    CloseWindow(windowStack[i], removeWindowCache);
+#pragma warning restore 4014
+        }
+
         public async Task DestroyWindow(string name)
         {
             if (windowsDict.TryGetValue(name, out var window))
@@ -297,6 +315,24 @@ namespace UIFramework.Core
             for (var i = windowStack.Count - 1; i >= 0; i--)
 #pragma warning disable 4014
                 DestroyWindow(windowStack[i]);
+#pragma warning restore 4014
+        }
+
+        public void DestroyAllWindow(int layer)
+        {
+            for (var i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer == layer)
+#pragma warning disable 4014
+                    DestroyWindow(windowStack[i]);
+#pragma warning restore 4014
+        }
+
+        public void DestroyAllWindowExceptLayer(int layer)
+        {
+            for (var i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer != layer)
+#pragma warning disable 4014
+                    DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
         }
 
@@ -348,7 +384,7 @@ namespace UIFramework.Core
 
         protected virtual int GetLastBackgroundWindowIndex()
         {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
+            for (var i = windowStack.Count - 1; i >= 0; i--)
                 if (windowsDict[windowStack[i]].IsBackground)
                     return i;
             return -1;
@@ -371,7 +407,7 @@ namespace UIFramework.Core
             var limit = windowStack.Count - 1;
             var min = Mathf.Clamp(Math.Min(beginIndex, endIndex), 0, limit);
             var max = Mathf.Clamp(Math.Max(beginIndex, endIndex), 0, limit);
-            for (int i = max; i >= min; i--)
+            for (var i = max; i >= min; i--)
                 windowStack.RemoveAt(i);
         }
 
