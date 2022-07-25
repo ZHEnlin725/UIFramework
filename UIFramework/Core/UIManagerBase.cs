@@ -102,14 +102,15 @@ namespace UIFramework.Core
                 Dependencies = dependencies
             };
         }
-
+        
         /// <summary>
         /// 打开窗口
         /// </summary>
         /// <param name="name"></param>
         /// <param name="layer">窗口层级</param>
+        /// <param name="closeOthers">打开窗口前关闭其他窗口</param>
         /// <param name="popWindow">是否弹出在该窗口打开期间的弹窗</param>
-        public void OpenWindow(string name, int layer, bool popWindow = false)
+        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false)
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
@@ -145,6 +146,18 @@ namespace UIFramework.Core
                     AddWindowToLayer(window.Inst.ui, layer);
 
                 window.Layer = layer;
+
+                if (closeOthers)
+                {
+                    var stackCount = windowStack.Count;
+                    for (int i = 0; i < stackCount; i++)
+                    {
+                        if (!windowStack[i].Equals(name))
+                        {
+                            CloseWindow(windowStack[i], false);
+                        }
+                    }
+                }
 
                 InternalOpen(window);
 
