@@ -326,8 +326,8 @@ namespace UIFramework.Core
             var ui = window.Inst.ui;
             var duration = PlayClosingAnimation(window.Name, ui);
             if (duration > 0) await Task.Delay(Mathf.CeilToInt(duration * 1000));
-            Deactivate(ui);
             window.Inst.OnDisable();
+            Deactivate(ui);
             window.IsActive = false;
             window.IsClosing = false;
         }
@@ -373,7 +373,7 @@ namespace UIFramework.Core
         /// </summary>
         /// <param name="name"></param>
         /// <param name="ui"></param>
-        /// <returns></returns>
+        /// <returns>返回播放关闭动画的时间单位 秒</returns>
         protected virtual float PlayClosingAnimation(string name, TUIObj ui) => -1;
 
         /// <summary>
