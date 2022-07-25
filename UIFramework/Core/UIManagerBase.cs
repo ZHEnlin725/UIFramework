@@ -273,6 +273,7 @@ namespace UIFramework.Core
                 window.Inst.OnDestroy();
                 Destroy(ui);
                 window.Inst = null;
+                window.Layer = -1;
                 window.IsLoaded = false;
                 window.IsDestroying = false;
             }
