@@ -218,7 +218,7 @@ namespace UIFramework.Core
         }
 
         /// <summary>
-        /// 开启窗口
+        /// 关闭窗口
         /// </summary>
         /// <param name="name"></param>
         /// <param name="removeWindowStack">是否将该窗口移除缓存队列</param>
