@@ -94,13 +94,13 @@ namespace UIFramework.Core
                 return;
             }
 #endif
-            windowsDict[name] = new Window
-            {
-                Name = name,
-                Create = createFunc,
-                IsBackground = isBackground,
-                Dependencies = dependencies
-            };
+            var window = WindowFactory();
+            window.Name = name;
+            window.Create = createFunc;
+            window.IsBackground = isBackground;
+            window.Dependencies = dependencies;
+
+            windowsDict[name] = window;
         }
 
         /// <summary>
@@ -389,7 +389,19 @@ namespace UIFramework.Core
                     return i;
             return -1;
         }
+        
+        protected virtual Window GetWindow(string name)
+        {
+            windowsDict.TryGetValue(name, out var window);
+            return window;
+        }
 
+        /// <summary>
+        /// WindowFactory is called when register new window
+        /// </summary>
+        /// <returns></returns>
+        protected virtual Window WindowFactory() => new Window();
+        
         private void PopWindowStack(int beginIndex, int endIndex)
         {
             var limit = windowStack.Count - 1;
