@@ -174,12 +174,10 @@ namespace UIFramework.Core
                         {
                             var beginIndex = index + 1;
                             var nextBackgroundWindowIndex = lastBackgroundWindowIndex;
-                            for (var i = beginIndex; i < windowStack.Count; i++)
+                            for (var i = beginIndex; i < windowStack.Count; nextBackgroundWindowIndex = i++)
                             {
                                 if (windowsDict[windowStack[i]].IsBackground)
                                     break;
-
-                                nextBackgroundWindowIndex = i;
                             }
 
                             if (popWindow)
@@ -389,7 +387,7 @@ namespace UIFramework.Core
                     return i;
             return -1;
         }
-        
+
         protected virtual Window GetWindow(string name)
         {
             windowsDict.TryGetValue(name, out var window);
@@ -401,7 +399,7 @@ namespace UIFramework.Core
         /// </summary>
         /// <returns></returns>
         protected virtual Window WindowFactory() => new Window();
-        
+
         private void PopWindowStack(int beginIndex, int endIndex)
         {
             var limit = windowStack.Count - 1;
