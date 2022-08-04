@@ -28,6 +28,12 @@ namespace UIFramework.Core
             public bool IsLoaded;
 
             /// <summary>
+            /// 是否互斥同一时间只能存在一个
+            /// 一般用在提示窗口
+            /// </summary>
+            public bool IsMutex;
+
+            /// <summary>
             /// 是否处于正在关闭
             /// </summary>
             public bool IsClosing;
@@ -41,6 +47,7 @@ namespace UIFramework.Core
         private readonly List<string> windowStack = new List<string>();
         private readonly List<Window> updatableWindows = new List<Window>();
         private readonly Dictionary<string, Window> windowsDict = new Dictionary<string, Window>();
+        private readonly List<string> mutexWindows = new List<string>();
 
         public virtual void Init()
         {
@@ -110,7 +117,9 @@ namespace UIFramework.Core
         /// <param name="layer">窗口层级</param>
         /// <param name="closeOthers">打开窗口前关闭其他窗口</param>
         /// <param name="popWindow">是否弹出在该窗口打开期间的弹窗</param>
-        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false)
+        /// <param name="mutex">是否只能同时存在一个</param>
+        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false,
+            bool mutex = false)
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
@@ -147,6 +156,22 @@ namespace UIFramework.Core
 
                 window.Layer = layer;
 
+                if (mutex)
+                {
+                    int indexOfMutex;
+
+                    if ((indexOfMutex = mutexWindows.IndexOf(name)) < 0)
+                        mutexWindows.Add(name);
+                    else if (indexOfMutex > 0)
+                        return;
+                }
+                else if (window.IsMutex)
+                {
+                    mutexWindows.Remove(name);
+                }
+
+                window.IsMutex = mutex;
+
                 if (closeOthers)
                 {
                     var stackCount = windowStack.Count;
@@ -154,7 +179,7 @@ namespace UIFramework.Core
                     {
                         if (!windowStack[i].Equals(name))
                         {
-                            CloseWindow(windowStack[i], false);
+                            CloseWindow(windowStack[i], false, false, false);
                         }
                     }
                 }
@@ -214,16 +239,17 @@ namespace UIFramework.Core
                 Debug.LogError($"Failed open window {name} !!!");
             }
         }
-
+        
         /// <summary>
         /// 关闭窗口
         /// </summary>
         /// <param name="name"></param>
         /// <param name="removeWindowStack">是否将该窗口移除缓存队列</param>
         /// <param name="removeWindowStackOnlyTop">当且仅当该窗口是最后一个时移除</param>
+        /// <param name="popMutexWindow">弹出在排队的互斥窗口</param>
         /// <returns></returns>
         public async Task CloseWindow(string name, bool removeWindowStack = true,
-            bool removeWindowStackOnlyTop = true)
+            bool removeWindowStackOnlyTop = true, bool popMutexWindow = true)
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
@@ -243,6 +269,17 @@ namespace UIFramework.Core
                 }
 
                 await InternalClose(window);
+
+                if (window.IsMutex)
+                {
+                    var indexOfMutex = mutexWindows.IndexOf(name);
+                    mutexWindows.Remove(name);
+                    if (popMutexWindow && indexOfMutex == 0 && mutexWindows.Count > 0)
+                    {
+                        var mutexWindow = windowsDict[mutexWindows[0]];
+                        OpenWindow(mutexWindow.Name, mutexWindow.Layer, false, false, true);
+                    }
+                }
             }
         }
 
@@ -408,7 +445,8 @@ namespace UIFramework.Core
             for (var i = min; i <= max; i++)
             {
                 var name = windowStack[i];
-                OpenWindow(name, windowsDict[name].Layer);
+                var window = windowsDict[name];
+                OpenWindow(name, window.Layer, false, false, window.IsMutex);
             }
         }
 
@@ -448,7 +486,7 @@ namespace UIFramework.Core
         /// <param name="dependencies"></param>
         /// <returns></returns>
         protected abstract TUIObj Instantiate(string name, string[] dependencies);
-        
+
         /// <summary>
         /// 销毁UI物体卸载资源以及依赖资源(可选)
         /// </summary>
