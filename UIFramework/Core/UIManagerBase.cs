@@ -300,7 +300,7 @@ namespace UIFramework.Core
 
                 var ui = window.Inst.ui;
                 window.Inst.OnDestroy();
-                Destroy(ui);
+                Destroy(ui, window.Name, window.Dependencies);
                 window.Inst = null;
                 window.Layer = -1;
                 window.IsLoaded = false;
@@ -425,8 +425,6 @@ namespace UIFramework.Core
 
         protected abstract void Deactivate(TUIObj ui);
 
-        protected abstract void Destroy(TUIObj ui);
-
         /// <summary>
         /// 播放窗口关闭动画
         /// 若返回值小于0则表示窗口没有关闭动画
@@ -450,5 +448,13 @@ namespace UIFramework.Core
         /// <param name="dependencies"></param>
         /// <returns></returns>
         protected abstract TUIObj Instantiate(string name, string[] dependencies);
+        
+        /// <summary>
+        /// 销毁UI物体卸载资源以及依赖资源(可选)
+        /// </summary>
+        /// <param name="ui"></param>
+        /// <param name="name"></param>
+        /// <param name="dependencies"></param>
+        protected abstract void Destroy(TUIObj ui, string name, string[] dependencies);
     }
 }
