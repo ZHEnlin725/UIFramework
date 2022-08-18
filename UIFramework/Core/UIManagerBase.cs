@@ -65,15 +65,8 @@ namespace UIFramework.Core
         }
 
         public virtual void RegisterLuaWindow<T>(string name, string moduleName, bool isBackground,
-            params string[] dependencies)
-        {
-            var type = typeof(T);
-#if UNITY_EDITOR
-            Debug.Assert(type.IsSubclassOf(typeof(LuaWindowBase<TUIObj>)));
-#endif
-            RegisterWindow(name, () => (LuaWindowBase<TUIObj>) Activator.CreateInstance(type, moduleName), isBackground,
-                dependencies);
-        }
+            params string[] dependencies) where T : LuaWindowBase<TUIObj> =>
+            RegisterLuaWindow(name, moduleName, typeof(T), isBackground, dependencies);
 
         public virtual void RegisterWindow(string name, Type type, bool isBackground, params string[] dependencies)
         {
