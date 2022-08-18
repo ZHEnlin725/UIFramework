@@ -28,12 +28,6 @@ namespace UIFramework.Core
             public bool IsLoaded;
 
             /// <summary>
-            /// 是否互斥同一时间只能存在一个
-            /// 一般用在提示窗口
-            /// </summary>
-            public bool IsMutex;
-
-            /// <summary>
             /// 是否处于正在关闭
             /// </summary>
             public bool IsClosing;
@@ -117,9 +111,7 @@ namespace UIFramework.Core
         /// <param name="layer">窗口层级</param>
         /// <param name="closeOthers">打开窗口前关闭其他窗口</param>
         /// <param name="popWindow">是否弹出在该窗口打开期间的弹窗</param>
-        /// <param name="mutex">是否只能同时存在一个</param>
-        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false,
-            bool mutex = false)
+        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false)
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
@@ -155,22 +147,6 @@ namespace UIFramework.Core
                     AddWindowToLayer(window.Inst.ui, layer);
 
                 window.Layer = layer;
-
-                if (mutex)
-                {
-                    int indexOfMutex;
-
-                    if ((indexOfMutex = mutexWindows.IndexOf(name)) < 0)
-                        mutexWindows.Add(name);
-                    else if (indexOfMutex > 0)
-                        return;
-                }
-                else if (window.IsMutex)
-                {
-                    mutexWindows.Remove(name);
-                }
-
-                window.IsMutex = mutex;
 
                 if (closeOthers)
                 {
@@ -269,17 +245,6 @@ namespace UIFramework.Core
                 }
 
                 await InternalClose(window);
-
-                if (window.IsMutex)
-                {
-                    var indexOfMutex = mutexWindows.IndexOf(name);
-                    mutexWindows.Remove(name);
-                    if (popMutexWindow && indexOfMutex == 0 && mutexWindows.Count > 0)
-                    {
-                        var mutexWindow = windowsDict[mutexWindows[0]];
-                        OpenWindow(mutexWindow.Name, mutexWindow.Layer, false, false, true);
-                    }
-                }
             }
         }
 
@@ -446,7 +411,7 @@ namespace UIFramework.Core
             {
                 var name = windowStack[i];
                 var window = windowsDict[name];
-                OpenWindow(name, window.Layer, false, false, window.IsMutex);
+                OpenWindow(name, window.Layer, false, false);
             }
         }
 
