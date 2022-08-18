@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace UIFramework.Core
 {
@@ -36,12 +38,17 @@ namespace UIFramework.Core
             /// 是否处于正在销毁
             /// </summary>
             public bool IsDestroying;
+
+            public bool CloseImmediate;
+
+            public bool DestroyImmediate;
         }
 
         private readonly List<string> windowStack = new List<string>();
         private readonly List<Window> updatableWindows = new List<Window>();
         private readonly Dictionary<string, Window> windowsDict = new Dictionary<string, Window>();
-        private readonly List<string> mutexWindows = new List<string>();
+
+        private readonly Stopwatch stopwatch = new Stopwatch();
 
         public virtual void Init()
         {
@@ -68,8 +75,7 @@ namespace UIFramework.Core
                 dependencies);
         }
 
-        public virtual void RegisterWindow(string name, Type type, bool isBackground,
-            params string[] dependencies)
+        public virtual void RegisterWindow(string name, Type type, bool isBackground, params string[] dependencies)
         {
 #if UNITY_EDITOR
             Debug.Assert(typeof(IWindow<TUIObj>).IsAssignableFrom(type));
@@ -150,14 +156,7 @@ namespace UIFramework.Core
 
                 if (closeOthers)
                 {
-                    var stackCount = windowStack.Count;
-                    for (int i = 0; i < stackCount; i++)
-                    {
-                        if (!windowStack[i].Equals(name))
-                        {
-                            CloseWindow(windowStack[i], false, false, false);
-                        }
-                    }
+                    CloseAllWindowsImmediate(false);
                 }
 
                 InternalOpen(window);
@@ -215,22 +214,23 @@ namespace UIFramework.Core
                 Debug.LogError($"Failed open window {name} !!!");
             }
         }
-        
+
         /// <summary>
         /// 关闭窗口
         /// </summary>
         /// <param name="name"></param>
         /// <param name="removeWindowStack">是否将该窗口移除缓存队列</param>
         /// <param name="removeWindowStackOnlyTop">当且仅当该窗口是最后一个时移除</param>
-        /// <param name="popMutexWindow">弹出在排队的互斥窗口</param>
         /// <returns></returns>
         public async Task CloseWindow(string name, bool removeWindowStack = true,
-            bool removeWindowStackOnlyTop = true, bool popMutexWindow = true)
+            bool removeWindowStackOnlyTop = true)
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
                 if (!window.IsLoaded || !window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
+
+                window.CloseImmediate = false;
 
                 if (removeWindowStack)
                 {
@@ -245,6 +245,40 @@ namespace UIFramework.Core
                 }
 
                 await InternalClose(window);
+            }
+        }
+
+        public void CloseWindowImmediate(string name, bool removeWindowStack = true,
+            bool removeWindowStackOnlyTop = true)
+        {
+            if (windowsDict.TryGetValue(name, out var window))
+            {
+                if (!window.IsLoaded || !window.IsActive || window.IsDestroying)
+                    return;
+
+                if (window.IsClosing)
+                {
+                    if (window.CloseImmediate)
+                    {
+                        return;
+                    }
+                }
+
+                window.CloseImmediate = true;
+
+                if (removeWindowStack)
+                {
+                    int index;
+                    if ((index = windowStack.IndexOf(name)) >= 0)
+                    {
+                        if (!removeWindowStackOnlyTop || index == windowStack.Count - 1)
+                        {
+                            windowStack.RemoveAt(index);
+                        }
+                    }
+                }
+
+                InternalCloseImmediate(window);
             }
         }
 
@@ -274,6 +308,26 @@ namespace UIFramework.Core
 #pragma warning restore 4014
         }
 
+        public void CloseAllWindowsImmediate(bool removeWindowCache = true)
+        {
+            for (int i = windowStack.Count - 1; i >= 0; i--)
+                CloseWindowImmediate(windowStack[i], removeWindowCache);
+        }
+
+        public void CloseAllWindowsImmediate(int layer, bool removeWindowCache = true)
+        {
+            for (int i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer == layer)
+                    CloseWindowImmediate(windowStack[i], removeWindowCache);
+        }
+
+        public void CloseAllWindowsExceptLayerImmediate(int layer, bool removeWindowCache = true)
+        {
+            for (int i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer != layer)
+                    CloseWindowImmediate(windowStack[i], removeWindowCache);
+        }
+
         public async Task DestroyWindow(string name)
         {
             if (windowsDict.TryGetValue(name, out var window))
@@ -282,6 +336,8 @@ namespace UIFramework.Core
                     return;
 
                 window.IsDestroying = true;
+
+                window.DestroyImmediate = false;
 
                 windowStack.Remove(name);
                 updatableWindows.Remove(window);
@@ -292,13 +348,46 @@ namespace UIFramework.Core
                 }
                 else
                 {
-                    void WaitForWindowClosed()
+                    await Task.Run(() =>
                     {
-                        while (window.IsClosing) Task.Delay(1);
-                    }
-
-                    await Task.Run(WaitForWindowClosed);
+                        while (window.IsClosing) ;
+                    });
                 }
+
+                if (window.DestroyImmediate) return;
+
+                var ui = window.Inst.ui;
+                window.Inst.OnDestroy();
+                Destroy(ui, window.Name, window.Dependencies);
+                window.Inst = null;
+                window.Layer = -1;
+                window.IsLoaded = false;
+                window.IsDestroying = false;
+            }
+        }
+
+        public void DestroyWindowImmediate(string name)
+        {
+            if (windowsDict.TryGetValue(name, out var window))
+            {
+                if (!window.IsLoaded)
+                    return;
+
+                if (window.IsDestroying)
+                {
+                    if (window.DestroyImmediate)
+                    {
+                        return;
+                    }
+                }
+
+                window.IsDestroying = true;
+
+                window.DestroyImmediate = true;
+
+                updatableWindows.Remove(window);
+
+                CloseWindowImmediate(name, true, false);
 
                 var ui = window.Inst.ui;
                 window.Inst.OnDestroy();
@@ -334,6 +423,26 @@ namespace UIFramework.Core
 #pragma warning disable 4014
                     DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
+        }
+
+        public void DestroyAllWindowImmediate()
+        {
+            for (var i = windowStack.Count - 1; i >= 0; i--)
+                DestroyWindowImmediate(windowStack[i]);
+        }
+
+        public void DestroyAllWindowImmediate(int layer)
+        {
+            for (var i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer == layer)
+                    DestroyWindowImmediate(windowStack[i]);
+        }
+
+        public void DestroyAllWindowExceptLayerImmediate(int layer)
+        {
+            for (var i = windowStack.Count - 1; i >= 0; i--)
+                if (windowsDict[windowStack[i]].Layer != layer)
+                    DestroyWindowImmediate(windowStack[i]);
         }
 
         public void SendMessage(string name, int messageId, object param)
@@ -375,7 +484,31 @@ namespace UIFramework.Core
             window.IsClosing = true;
             var ui = window.Inst.ui;
             var duration = PlayClosingAnimation(window.Name, ui);
-            if (duration > 0) await Task.Delay(Mathf.CeilToInt(duration * 1000));
+            if (duration > 0)
+            {
+                if (!stopwatch.IsRunning) stopwatch.Start();
+                await Task.Run(() =>
+                {
+                    var durationMilliseconds = duration * 1000;
+                    for (var timeSinceClose = stopwatch.ElapsedMilliseconds;
+                        stopwatch.ElapsedMilliseconds - timeSinceClose < durationMilliseconds;)
+                        if (window.CloseImmediate)
+                            break;
+                });
+            }
+
+            if (window.CloseImmediate) return;
+
+            window.Inst.OnDisable();
+            Deactivate(ui);
+            window.IsActive = false;
+            window.IsClosing = false;
+        }
+
+        protected virtual void InternalCloseImmediate(Window window)
+        {
+            window.IsClosing = true;
+            var ui = window.Inst.ui;
             window.Inst.OnDisable();
             Deactivate(ui);
             window.IsActive = false;
