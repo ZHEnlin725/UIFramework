@@ -349,13 +349,7 @@ namespace UIFramework.Core
 
                 if (window.DestroyImmediate) return;
 
-                var ui = window.Inst.ui;
-                window.Inst.OnDestroy();
-                Destroy(ui, window.Name, window.Dependencies);
-                window.Inst = null;
-                window.Layer = -1;
-                window.IsLoaded = false;
-                window.IsDestroying = false;
+                InternalDestroy(window);
             }
         }
 
@@ -382,13 +376,7 @@ namespace UIFramework.Core
 
                 CloseWindowImmediate(name, true, false);
 
-                var ui = window.Inst.ui;
-                window.Inst.OnDestroy();
-                Destroy(ui, window.Name, window.Dependencies);
-                window.Inst = null;
-                window.Layer = -1;
-                window.IsLoaded = false;
-                window.IsDestroying = false;
+                InternalDestroy(window);
             }
         }
 
@@ -506,6 +494,17 @@ namespace UIFramework.Core
             Deactivate(ui);
             window.IsActive = false;
             window.IsClosing = false;
+        }
+
+        protected virtual void InternalDestroy(Window window)
+        {
+            var ui = window.Inst.ui;
+            window.Inst.OnDestroy();
+            Destroy(ui, window.Name, window.Dependencies);
+            window.Inst = null;
+            window.Layer = -1;
+            window.IsLoaded = false;
+            window.IsDestroying = false;
         }
 
         protected virtual int GetLastBackgroundWindowIndex()
