@@ -27,7 +27,7 @@ namespace UIFramework.Core
             public int Layer = -1;
             public float SoringOrder;
             public bool IsActive;
-            public bool IsLoaded;
+            public bool IsInstantiated;
 
             /// <summary>
             /// 是否处于正在关闭
@@ -117,7 +117,7 @@ namespace UIFramework.Core
                 if (window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
 
-                if (!window.IsLoaded)
+                if (!window.IsInstantiated)
                 {
                     Debug.Assert(window.Create != null, "Failed to create window !!!");
                     var inst = window.Create();
@@ -136,7 +136,7 @@ namespace UIFramework.Core
                     Deactivate(uiObj);
 
                     window.Inst = inst;
-                    window.IsLoaded = true;
+                    window.IsInstantiated = true;
 
                     if (window.IsUpdatable)
                         updatableWindows.Add(window);
@@ -220,7 +220,7 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (!window.IsLoaded || !window.IsActive || window.IsClosing || window.IsDestroying)
+                if (!window.IsInstantiated || !window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
 
                 window.CloseImmediate = false;
@@ -246,7 +246,7 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (!window.IsLoaded || !window.IsActive || window.IsDestroying)
+                if (!window.IsInstantiated || !window.IsActive || window.IsDestroying)
                     return;
 
                 if (window.IsClosing)
@@ -325,7 +325,7 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (!window.IsLoaded || window.IsDestroying)
+                if (!window.IsInstantiated || window.IsDestroying)
                     return;
 
                 window.IsDestroying = true;
@@ -357,7 +357,7 @@ namespace UIFramework.Core
         {
             if (windowsDict.TryGetValue(name, out var window))
             {
-                if (!window.IsLoaded)
+                if (!window.IsInstantiated)
                     return;
 
                 if (window.IsDestroying)
@@ -503,7 +503,7 @@ namespace UIFramework.Core
             Destroy(ui, window.Name, window.Dependencies);
             window.Inst = null;
             window.Layer = -1;
-            window.IsLoaded = false;
+            window.IsInstantiated = false;
             window.IsDestroying = false;
         }
 
