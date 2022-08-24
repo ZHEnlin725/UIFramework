@@ -224,8 +224,6 @@ namespace UIFramework.Core
                 if (!window.IsInstantiated || !window.IsActive || window.IsClosing || window.IsDestroying)
                     return;
 
-                window.CloseImmediate = false;
-
                 if (removeWindowStack)
                 {
                     int index;
@@ -257,8 +255,6 @@ namespace UIFramework.Core
                         return;
                     }
                 }
-
-                window.CloseImmediate = true;
 
                 if (removeWindowStack)
                 {
@@ -337,7 +333,6 @@ namespace UIFramework.Core
 
                 windowStack.Remove(name);
                 updatableWindows.Remove(window);
-
                 if (!window.IsClosing)
                 {
                     await InternalClose(window);
@@ -469,6 +464,7 @@ namespace UIFramework.Core
         protected virtual async Task InternalClose(Window window)
         {
             window.IsClosing = true;
+            window.CloseImmediate = false;
             var ui = window.Inst.ui;
             var duration = PlayClosingAnimation(window.Name, ui);
             if (duration > 0)
@@ -495,6 +491,7 @@ namespace UIFramework.Core
         protected virtual void InternalCloseImmediate(Window window)
         {
             window.IsClosing = true;
+            window.CloseImmediate = true;
             var ui = window.Inst.ui;
             window.Inst.OnDisable();
             Deactivate(ui);
