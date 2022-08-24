@@ -124,11 +124,14 @@ public static class GenUIComInitScript
         classBuilder.Append($"\tpublic GComponent {RootComName};\n");
 
         constructorBuilder.Append($"\n\tpublic {scriptName}(GComponent {ParamName})\n" + "\t{\n");
+        var duplicate = new Dictionary<string, int>();
         foreach (var child in com.GetChildren())
         {
             var type = child.GetType();
             if (NoGen.Contains(type)) continue;
             var field = child.name;
+            if (!duplicate.ContainsKey(field)) duplicate[field] = 0;
+            duplicate[field]++;
             var statement = $"{ParamName}.GetChild(\"{child.name}\").as{As(type)}";
             var fieldType = type.Name;
             if (type == typeof(GComponent))
@@ -141,8 +144,9 @@ public static class GenUIComInitScript
                 }
             }
 
-            classBuilder.Append($"\tpublic {fieldType} {child.name};\n");
-            constructorBuilder.Append($"\t\tthis.{field} = {statement};\n");
+            var fieldName = $"{child.name}{(duplicate[field] > 1 ? (duplicate[field] - 1).ToString() : "")}";
+            classBuilder.Append($"\tpublic {fieldType} {fieldName};\n");
+            constructorBuilder.Append($"\t\tthis.{fieldName} = {statement};\n");
         }
 
         var controllers = com.Controllers;
@@ -208,19 +212,21 @@ public static class GenUIComInitScript
         {
             var type = child.GetType();
             if (NoGen.Contains(type)) continue;
-            if (type == typeof(GComponent) && child.asCom.numChildren > 0)
+            var typeName = type.Name;
+            var assignStatement = $"{ParamName}:GetChild(\"{child.name}\")";
+            if (type == typeof(GComponent))
+            {
+                if (child.asCom.numChildren > 0)
             {
                 var childModule = $"{pkgName}_{child.name}";
                 GenLuaScript(pkgName, childModule, child);
-                annotationBuilder.Append($"\t---@field {child.name} {childModule}\n");
-                statementBuilder.Append(
-                    $"\t{LuaInstName}.{child.name} = require '{childModule}'.{LuaFuncName}({ParamName}:GetChild(\"{child.name}\"))\n");
+                    typeName = childModule;
+                    assignStatement = $"require '{childModule}'.{LuaFuncName}({ParamName}:GetChild(\"{child.name}\"))";
             }
-            else
-            {
-                annotationBuilder.Append($"\t---@field {child.name} {type}\n");
-                statementBuilder.Append($"\t{LuaInstName}.{child.name} = {ParamName}:GetChild(\"{child.name}\")\n");
             }
+
+            annotationBuilder.Append($"\t---@field {child.name} {typeName}\n");
+            statementBuilder.Append($"\t{LuaInstName}.{child.name} = {assignStatement}\n");
         }
 
         var controllers = com.Controllers;
