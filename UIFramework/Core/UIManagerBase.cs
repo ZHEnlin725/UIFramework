@@ -279,14 +279,15 @@ namespace UIFramework.Core
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
 #pragma warning disable 4014
-                CloseWindow(windowStack[i], removeWindowCache);
+                if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
+                    CloseWindow(windowStack[i], removeWindowCache);
 #pragma warning restore 4014
         }
 
         public void CloseAllWindows(int layer, bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer == layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
 #pragma warning disable 4014
                     CloseWindow(windowStack[i], removeWindowCache);
 #pragma warning restore 4014
@@ -295,7 +296,7 @@ namespace UIFramework.Core
         public void CloseAllWindowsExceptLayer(int layer, bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer != layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
 #pragma warning disable 4014
                     CloseWindow(windowStack[i], removeWindowCache);
 #pragma warning restore 4014
@@ -304,20 +305,21 @@ namespace UIFramework.Core
         public void CloseAllWindowsImmediate(bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-                CloseWindowImmediate(windowStack[i], removeWindowCache);
+                if (i <= windowStack.Count - 1)
+                    CloseWindowImmediate(windowStack[i], removeWindowCache);
         }
 
         public void CloseAllWindowsImmediate(int layer, bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer == layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
                     CloseWindowImmediate(windowStack[i], removeWindowCache);
         }
 
         public void CloseAllWindowsExceptLayerImmediate(int layer, bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer != layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
                     CloseWindowImmediate(windowStack[i], removeWindowCache);
         }
 
@@ -384,14 +386,15 @@ namespace UIFramework.Core
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
 #pragma warning disable 4014
-                DestroyWindow(windowStack[i]);
+                if (i <= windowStack.Count - 1)
+                    DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
         }
 
         public void DestroyAllWindow(int layer)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer == layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
 #pragma warning disable 4014
                     DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
@@ -400,7 +403,7 @@ namespace UIFramework.Core
         public void DestroyAllWindowExceptLayer(int layer)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer != layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
 #pragma warning disable 4014
                     DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
@@ -409,20 +412,21 @@ namespace UIFramework.Core
         public void DestroyAllWindowImmediate()
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                DestroyWindowImmediate(windowStack[i]);
+                if (i <= windowStack.Count - 1)
+                    DestroyWindowImmediate(windowStack[i]);
         }
 
         public void DestroyAllWindowImmediate(int layer)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer == layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
                     DestroyWindowImmediate(windowStack[i]);
         }
 
         public void DestroyAllWindowExceptLayerImmediate(int layer)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].Layer != layer)
+                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
                     DestroyWindowImmediate(windowStack[i]);
         }
 
