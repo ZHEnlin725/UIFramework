@@ -48,6 +48,7 @@ namespace UIFramework.Core
         private readonly List<Window> updatableWindows = new List<Window>();
         private readonly Dictionary<string, Window> windowsDict = new Dictionary<string, Window>();
 
+        private float stopwatchTimescale = 1;
         private readonly Stopwatch stopwatch = new Stopwatch();
 
         public virtual void Init()
@@ -452,6 +453,7 @@ namespace UIFramework.Core
 
         public virtual void Update()
         {
+            stopwatchTimescale = Mathf.Max(Time.timeScale, 0);
             var count = updatableWindows.Count;
             for (var i = count - 1; i >= 0; i--)
                 updatableWindows[i].Inst.OnUpdate();
@@ -476,7 +478,7 @@ namespace UIFramework.Core
                 {
                     var durationMilliseconds = duration * 1000;
                     for (var timeSinceClose = stopwatch.ElapsedMilliseconds;
-                        stopwatch.ElapsedMilliseconds - timeSinceClose < durationMilliseconds;)
+                        (stopwatch.ElapsedMilliseconds - timeSinceClose) * stopwatchTimescale < durationMilliseconds;)
                         if (window.CloseImmediate)
                             break;
                 });
