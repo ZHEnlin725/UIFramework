@@ -370,9 +370,12 @@ namespace UIFramework.Core
 
                 window.DestroyImmediate = true;
 
+                windowStack.Remove(name);
+
                 updatableWindows.Remove(window);
 
-                CloseWindowImmediate(name, true, false);
+                if (window.IsActive)
+                    InternalCloseImmediate(window);
 
                 InternalDestroy(window);
             }
