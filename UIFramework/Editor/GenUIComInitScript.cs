@@ -212,7 +212,7 @@ public static class GenUIComInitScript
         {
             var type = child.GetType();
             if (NoGen.Contains(type)) continue;
-            var typeName = type.Name;
+            var typeName = type.FullName;
             var assignStatement = $"{ParamName}:GetChild(\"{child.name}\")";
             if (type == typeof(GComponent))
             {
