@@ -1,0 +1,10 @@
+*.meta
+character/
+FairyGUI/
+LuaScripts/
+Plugins/
+Shaders/
+XLua/
+Scripts/
+Scenes/
+Prefabs/

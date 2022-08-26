@@ -275,8 +275,8 @@ namespace UIFramework.Core
         public void CloseAllWindows(bool removeWindowCache = true)
         {
             for (int i = windowStack.Count - 1; i >= 0; i--)
-#pragma warning disable 4014
                 if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
+#pragma warning disable 4014
                     CloseWindow(windowStack[i], removeWindowCache);
 #pragma warning restore 4014
         }
@@ -384,8 +384,8 @@ namespace UIFramework.Core
         public void DestroyAllWindow()
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-#pragma warning disable 4014
                 if (i <= windowStack.Count - 1)
+#pragma warning disable 4014
                     DestroyWindow(windowStack[i]);
 #pragma warning restore 4014
         }
