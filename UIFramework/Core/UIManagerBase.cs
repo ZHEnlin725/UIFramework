@@ -248,12 +248,9 @@ namespace UIFramework.Core
                 if (!window.IsInstantiated || !window.IsActive || window.IsDestroying)
                     return;
 
-                if (window.IsClosing)
+                if (window.IsClosing && window.CloseImmediate)
                 {
-                    if (window.CloseImmediate)
-                    {
-                        return;
-                    }
+                    return;
                 }
 
                 if (removeWindowStack)
