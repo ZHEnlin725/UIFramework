@@ -12,18 +12,22 @@ namespace UIFramework.Core
     /// UI管理基类
     /// 在C#侧实现的好处是可以同时管理Lua和C#实现的UI逻辑
     /// </summary>
-    /// <typeparam name="TUIObj">UGUI:GameObject or FairyGUI:GObject</typeparam>
-    public abstract class UIManagerBase<TUIObj>
+    /// <typeparam name="UI">UGUI:GameObject or FairyGUI:GObject</typeparam>
+#if EXTENDS_MONO
+    public abstract class UIManagerBase<UI> : MonoBehaviour
+#else
+    public abstract class UIManagerBase<UI>
+#endif
     {
-        protected class Window
+        protected class WindowInfo
         {
             public string Name;
             public bool IsUpdatable;
             public bool IsBackground;
-            public Func<IWindow<TUIObj>> Create;
+            public Func<IWindow<UI>> Create;
             public string[] Dependencies;
 
-            public IWindow<TUIObj> Inst;
+            public IWindow<UI> Inst;
             public int Layer = -1;
             public float SoringOrder;
             public bool IsActive;
@@ -45,51 +49,42 @@ namespace UIFramework.Core
         }
 
         private readonly List<string> windowStack = new List<string>();
-        private readonly List<Window> updatableWindows = new List<Window>();
-        private readonly Dictionary<string, Window> windowsDict = new Dictionary<string, Window>();
+        private readonly List<string> windowInsts = new List<string>();
+
+        private readonly List<WindowInfo> updatableWindows = new List<WindowInfo>();
+        private readonly Dictionary<string, WindowInfo> windowInfoDict = new Dictionary<string, WindowInfo>();
 
         private float stopwatchTimescale = 1;
         private readonly Stopwatch stopwatch = new Stopwatch();
 
-        public virtual void Init()
-        {
-        }
+        public virtual void RegisterLuaWindow<T>(string name, string moduleName, bool isBackground,
+            params string[] dependencies) where T : LuaWindowBase<UI> =>
+            RegisterLuaWindow(name, moduleName, typeof(T), isBackground, dependencies);
 
         public virtual void RegisterLuaWindow(string name, string moduleName, Type type, bool isBackground,
             params string[] dependencies)
         {
 #if UNITY_EDITOR
-            Debug.Assert(type.IsSubclassOf(typeof(LuaWindowBase<TUIObj>)));
+            Debug.Assert(type.IsSubclassOf(typeof(LuaWindowBase<UI>)));
 #endif
-            RegisterWindow(name, () => (LuaWindowBase<TUIObj>) Activator.CreateInstance(type, moduleName), isBackground,
+            RegisterWindow(name, () => (LuaWindowBase<UI>) Activator.CreateInstance(type, moduleName), isBackground,
                 dependencies);
         }
 
-        public virtual void RegisterLuaWindow<T>(string name, string moduleName, bool isBackground,
-            params string[] dependencies) where T : LuaWindowBase<TUIObj> =>
-            RegisterLuaWindow(name, moduleName, typeof(T), isBackground, dependencies);
-
-        public virtual void RegisterWindow(string name, Type type, bool isBackground, params string[] dependencies)
+        public void RegisterWindow(string name, Type type, bool isBackground, params string[] dependencies)
         {
 #if UNITY_EDITOR
-            Debug.Assert(typeof(IWindow<TUIObj>).IsAssignableFrom(type));
+            Debug.Assert(typeof(IWindow<UI>).IsAssignableFrom(type));
             Debug.Assert(type.GetConstructor(new Type[0]) != null);
 #endif
-            RegisterWindow(name, () => (IWindow<TUIObj>) Activator.CreateInstance(type), isBackground, dependencies);
+            RegisterWindow(name, () => (IWindow<UI>) Activator.CreateInstance(type), isBackground, dependencies);
         }
 
-        /// <summary>
-        /// 注册窗口信息
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="createFunc"></param>
-        /// <param name="isBackground">是否为背景UI</param>
-        /// <param name="dependencies">该窗口的依赖资源</param>
-        public void RegisterWindow(string name, Func<IWindow<TUIObj>> createFunc, bool isBackground,
+        public void RegisterWindow(string name, Func<IWindow<UI>> createFunc, bool isBackground,
             params string[] dependencies)
         {
 #if UNITY_EDITOR
-            if (windowsDict.ContainsKey(name))
+            if (windowInfoDict.ContainsKey(name))
             {
                 Debug.LogError($"Duplicate window name {name} !!!");
                 return;
@@ -101,373 +96,339 @@ namespace UIFramework.Core
             window.IsBackground = isBackground;
             window.Dependencies = dependencies;
 
-            windowsDict[name] = window;
+            windowInfoDict[name] = window;
         }
 
-        /// <summary>
-        /// 打开窗口
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="layer">窗口层级</param>
-        /// <param name="closeOthers">打开窗口前关闭其他窗口</param>
-        /// <param name="popWindow">是否弹出在该窗口打开期间的弹窗</param>
-        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popWindow = false)
+        private readonly List<string> windowsBuffer = new List<string>();
+
+        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popupWindows = true)
         {
-            if (windowsDict.TryGetValue(name, out var window))
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
-                if (window.IsActive || window.IsClosing || window.IsDestroying)
+                if (windowInfo.IsActive || windowInfo.IsClosing || windowInfo.IsDestroying)
                     return;
 
-                if (!window.IsInstantiated)
+                if (!windowInfo.IsInstantiated)
                 {
-                    Debug.Assert(window.Create != null, "Failed to create window !!!");
-                    var inst = window.Create();
+                    Debug.Assert(windowInfo.Create != null, "Failed to create window !!!");
+                    var inst = windowInfo.Create();
                     var type = inst.GetType();
                     const string onupdate = "OnUpdate";
                     var methodInfo = type.GetMethod(onupdate, BindingFlags.Instance | BindingFlags.Public);
-                    // 是否重写基类的OnUpdate
                     var baseMethodInfo =
                         type.BaseType?.GetMethod(onupdate, BindingFlags.Instance | BindingFlags.Public);
                     if (methodInfo.DeclaringType != baseMethodInfo?.DeclaringType)
                         //重写过OnUpdate的子类说明需要每帧调用OnUpdate
-                        window.IsUpdatable = true;
+                        windowInfo.IsUpdatable = true;
 
-                    var uiObj = Instantiate(window.Name, window.Dependencies);
-                    inst.OnCreate(uiObj);
-                    Deactivate(uiObj);
+                    var ui = Instantiate(windowInfo.Name, windowInfo.Dependencies);
+                    inst.OnCreate(ui);
+                    Deactivate(ui);
 
-                    window.Inst = inst;
-                    window.IsInstantiated = true;
+                    windowInfo.Inst = inst;
+                    windowInfo.IsInstantiated = true;
 
-                    if (window.IsUpdatable)
-                        updatableWindows.Add(window);
+                    if (windowInfo.IsUpdatable)
+                        updatableWindows.Add(windowInfo);
+                    windowInsts.Add(name);
                 }
 
-                if (window.Layer != layer)
-                    AddWindowToLayer(window.Inst.ui, layer);
+                if (windowInfo.Layer != layer)
+                    AddWindowToLayer(windowInfo, layer);
 
-                window.Layer = layer;
+                windowInfo.Layer = layer;
 
-                if (closeOthers)
+                if (closeOthers) CloseAllWindowsImmediate(false);
+
+                InternalOpen(windowInfo);
+
+                var indexOfStack = windowStack.IndexOf(name);
+                if (indexOfStack >= 0) windowStack.RemoveAt(indexOfStack);
+                windowStack.Add(name);
+
+                if (windowInfo.IsBackground)
                 {
-                    CloseAllWindowsImmediate(false);
-                }
-
-                InternalOpen(window);
-
-                var index = windowStack.IndexOf(name);
-
-                if (window.IsBackground)
-                {
-                    var lastBackgroundWindowIndex = GetLastBackgroundWindowIndex();
-
-                    if (lastBackgroundWindowIndex < 0 ||
-                        windowsDict[windowStack[lastBackgroundWindowIndex]].Name != name)
+                    if (indexOfStack >= 0)
                     {
-                        if (index >= 0)
+                        int from = indexOfStack, to = indexOfStack - 1;
+                        for (var i = from; i < windowStack.Count; to = i++)
                         {
-                            var beginIndex = index + 1;
-                            var nextBackgroundWindowIndex = lastBackgroundWindowIndex;
-                            for (var i = beginIndex; i < windowStack.Count; nextBackgroundWindowIndex = i++)
-                            {
-                                if (windowsDict[windowStack[i]].IsBackground)
-                                    break;
-                            }
+                            if (windowInfoDict[windowStack[i]].IsBackground)
+                                break;
+                        }
 
-                            if (popWindow)
+                        if (popupWindows)
+                        {
+                            windowsBuffer.Clear();
+                            for (var i = from; i <= to; i++)
+                                windowsBuffer.Add(windowStack[i]);
+                            foreach (var winname in windowsBuffer)
                             {
-                                PopWindowStack(beginIndex, nextBackgroundWindowIndex);
-                            }
-                            else
-                            {
-                                ClearWindowStack(beginIndex, nextBackgroundWindowIndex);
+                                windowInfoDict.TryGetValue(winname, out var info);
+                                OpenWindow(info.Name, info.Layer, false, false);
                             }
                         }
                         else
                         {
-                            windowStack.Add(name);
+                            for (var i = to; i >= from; i--)
+                                windowStack.RemoveAt(i);
                         }
                     }
-                    else if (popWindow)
+                }
+            }
+        }
+
+        public async Task CloseWindow(string name, bool removeWindowStack = false, bool removeWindowStackOnlyTop = true,
+            bool openLastClosedBgWin = true)
+        {
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
+            {
+                if (!windowInfo.IsInstantiated || !windowInfo.IsActive || windowInfo.IsClosing ||
+                    windowInfo.IsDestroying)
+                    return;
+
+                var indexOfStack = windowStack.IndexOf(name);
+                if (removeWindowStack)
+                {
+                    if (indexOfStack >= 0)
                     {
-                        PopWindowStack(lastBackgroundWindowIndex + 1, windowStack.Count - 1);
+                        if (!removeWindowStackOnlyTop || indexOfStack == windowStack.Count - 1)
+                        {
+                            windowStack.RemoveAt(indexOfStack);
+                        }
+                    }
+                }
+
+                await InternalClose(windowInfo);
+
+                if (openLastClosedBgWin && windowInfo.IsBackground)
+                {
+                    OpenLastClosedBgWindow(indexOfStack - 1, true);
+                }
+            }
+        }
+
+        public void CloseWindowImmediate(string name, bool removeWindowStack = false,
+            bool removeWindowStackOnlyTop = true, bool openLastClosedBgWin = true)
+        {
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
+            {
+                if (!windowInfo.IsInstantiated || !windowInfo.IsActive || windowInfo.IsDestroying)
+                    return;
+
+                if (windowInfo.IsClosing && windowInfo.CloseImmediate)
+                {
+                    return;
+                }
+
+                var indexOfStack = windowStack.IndexOf(name);
+
+                if (removeWindowStack)
+                {
+                    if (indexOfStack >= 0)
+                    {
+                        if (!removeWindowStackOnlyTop || indexOfStack == windowStack.Count - 1)
+                        {
+                            windowStack.RemoveAt(indexOfStack);
+                        }
+                    }
+                }
+
+                InternalCloseImmediate(windowInfo);
+
+                if (openLastClosedBgWin && windowInfo.IsBackground)
+                {
+                    OpenLastClosedBgWindow(indexOfStack - 1, true);
+                }
+            }
+        }
+
+        public async Task DestroyWindow(string name, bool removeWindowStack = false,
+            bool removeWindowStackOnlyTop = true, bool openLastClosedBgWin = true)
+        {
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
+            {
+                if (!windowInfo.IsInstantiated || windowInfo.IsDestroying)
+                    return;
+
+                windowInsts.Remove(name);
+                updatableWindows.Remove(windowInfo);
+
+                windowInfo.IsDestroying = true;
+
+                windowInfo.DestroyImmediate = false;
+
+                var indexOfStack = windowStack.IndexOf(name);
+                if (removeWindowStack && indexOfStack >= 0)
+                {
+                    if (!removeWindowStackOnlyTop || indexOfStack == windowStack.Count - 1)
+                    {
+                        windowStack.RemoveAt(indexOfStack);
+                    }
+                }
+
+                if (windowInfo.IsActive)
+                {
+                    if (windowInfo.IsClosing)
+                    {
+                        await Task.Run(() =>
+                        {
+                            while (windowInfo.IsClosing) ;
+                        });
                     }
                     else
                     {
-                        ClearWindowStack(lastBackgroundWindowIndex + 1, windowStack.Count - 1);
-                    }
-                }
-                else
-                {
-                    if (index < 0)
-                        windowStack.Add(name);
-                }
-            }
-            else
-            {
-                Debug.LogError($"Failed open window {name} !!!");
-            }
-        }
-
-        /// <summary>
-        /// 关闭窗口
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="removeWindowStack">是否将该窗口移除缓存队列</param>
-        /// <param name="removeWindowStackOnlyTop">当且仅当该窗口是最后一个时移除</param>
-        /// <returns></returns>
-        public async Task CloseWindow(string name, bool removeWindowStack = true,
-            bool removeWindowStackOnlyTop = true)
-        {
-            if (windowsDict.TryGetValue(name, out var window))
-            {
-                if (!window.IsInstantiated || !window.IsActive || window.IsClosing || window.IsDestroying)
-                    return;
-
-                if (removeWindowStack)
-                {
-                    int index;
-                    if ((index = windowStack.IndexOf(name)) >= 0)
-                    {
-                        if (!removeWindowStackOnlyTop || index == windowStack.Count - 1)
-                        {
-                            windowStack.RemoveAt(index);
-                        }
+                        await InternalClose(windowInfo);
                     }
                 }
 
-                await InternalClose(window);
+                if (windowInfo.DestroyImmediate) return;
+
+                InternalDestroy(windowInfo);
+
+                if (openLastClosedBgWin && windowInfo.IsBackground)
+                {
+                    OpenLastClosedBgWindow(indexOfStack - 1, true);
+                }
             }
         }
 
-        public void CloseWindowImmediate(string name, bool removeWindowStack = true,
-            bool removeWindowStackOnlyTop = true)
+        public void DestroyWindowImmediate(string name, bool removeWindowStack = false,
+            bool removeWindowStackOnlyTop = true, bool openLastClosedBgWin = true)
         {
-            if (windowsDict.TryGetValue(name, out var window))
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
-                if (!window.IsInstantiated || !window.IsActive || window.IsDestroying)
+                if (!windowInfo.IsInstantiated)
                     return;
 
-                if (window.IsClosing && window.CloseImmediate)
+                if (windowInfo.IsDestroying)
                 {
-                    return;
-                }
-
-                if (removeWindowStack)
-                {
-                    int index;
-                    if ((index = windowStack.IndexOf(name)) >= 0)
-                    {
-                        if (!removeWindowStackOnlyTop || index == windowStack.Count - 1)
-                        {
-                            windowStack.RemoveAt(index);
-                        }
-                    }
-                }
-
-                InternalCloseImmediate(window);
-            }
-        }
-
-        public void CloseAllWindows(bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
-#pragma warning disable 4014
-                    CloseWindow(windowStack[i], removeWindowCache);
-#pragma warning restore 4014
-        }
-
-        public void CloseAllWindows(int layer, bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
-#pragma warning disable 4014
-                    CloseWindow(windowStack[i], removeWindowCache);
-#pragma warning restore 4014
-        }
-
-        public void CloseAllWindowsExceptLayer(int layer, bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
-#pragma warning disable 4014
-                    CloseWindow(windowStack[i], removeWindowCache);
-#pragma warning restore 4014
-        }
-
-        public void CloseAllWindowsImmediate(bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1)
-                    CloseWindowImmediate(windowStack[i], removeWindowCache);
-        }
-
-        public void CloseAllWindowsImmediate(int layer, bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
-                    CloseWindowImmediate(windowStack[i], removeWindowCache);
-        }
-
-        public void CloseAllWindowsExceptLayerImmediate(int layer, bool removeWindowCache = true)
-        {
-            for (int i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
-                    CloseWindowImmediate(windowStack[i], removeWindowCache);
-        }
-
-        public async Task DestroyWindow(string name)
-        {
-            if (windowsDict.TryGetValue(name, out var window))
-            {
-                if (!window.IsInstantiated || window.IsDestroying)
-                    return;
-
-                window.IsDestroying = true;
-
-                window.DestroyImmediate = false;
-
-                windowStack.Remove(name);
-                updatableWindows.Remove(window);
-                if (!window.IsClosing)
-                {
-                    await InternalClose(window);
-                }
-                else
-                {
-                    await Task.Run(() =>
-                    {
-                        while (window.IsClosing) ;
-                    });
-                }
-
-                if (window.DestroyImmediate) return;
-
-                InternalDestroy(window);
-            }
-        }
-
-        public void DestroyWindowImmediate(string name)
-        {
-            if (windowsDict.TryGetValue(name, out var window))
-            {
-                if (!window.IsInstantiated)
-                    return;
-
-                if (window.IsDestroying)
-                {
-                    if (window.DestroyImmediate)
+                    if (windowInfo.DestroyImmediate)
                     {
                         return;
                     }
                 }
 
-                window.IsDestroying = true;
+                windowInsts.Remove(name);
+                updatableWindows.Remove(windowInfo);
 
-                window.DestroyImmediate = true;
+                var indexOfStack = windowStack.IndexOf(name);
+                if (removeWindowStack && indexOfStack >= 0)
+                {
+                    if (!removeWindowStackOnlyTop || indexOfStack == windowStack.Count - 1)
+                    {
+                        windowStack.RemoveAt(indexOfStack);
+                    }
+                }
 
-                windowStack.Remove(name);
+                windowInfo.IsDestroying = true;
 
-                updatableWindows.Remove(window);
+                windowInfo.DestroyImmediate = true;
 
-                if (window.IsActive)
-                    InternalCloseImmediate(window);
+                if (windowInfo.IsActive)
+                    InternalCloseImmediate(windowInfo);
 
-                InternalDestroy(window);
+                InternalDestroy(windowInfo);
+
+                if (openLastClosedBgWin && windowInfo.IsBackground)
+                {
+                    OpenLastClosedBgWindow(indexOfStack - 1, true);
+                }
             }
         }
 
-        public void DestroyAllWindow()
+        public async void CloseAllWindows(bool removeWindowStack = true)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1)
-#pragma warning disable 4014
-                    DestroyWindow(windowStack[i]);
-#pragma warning restore 4014
+                if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
+                    await CloseWindow(windowStack[i], removeWindowStack, false, false);
         }
 
-        public void DestroyAllWindow(int layer)
+        public void CloseAllWindowsImmediate(bool removeWindowStack = true)
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
-#pragma warning disable 4014
-                    DestroyWindow(windowStack[i]);
-#pragma warning restore 4014
+                if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
+                    CloseWindowImmediate(windowStack[i], removeWindowStack, false, false);
         }
 
-        public void DestroyAllWindowExceptLayer(int layer)
+        public void DestroyAllWindows()
         {
             for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
-#pragma warning disable 4014
-                    DestroyWindow(windowStack[i]);
-#pragma warning restore 4014
-        }
-
-        public void DestroyAllWindowImmediate()
-        {
-            for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1)
-                    DestroyWindowImmediate(windowStack[i]);
-        }
-
-        public void DestroyAllWindowImmediate(int layer)
-        {
-            for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer == layer)
-                    DestroyWindowImmediate(windowStack[i]);
-        }
-
-        public void DestroyAllWindowExceptLayerImmediate(int layer)
-        {
-            for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (i <= windowStack.Count - 1 && windowsDict[windowStack[i]].Layer != layer)
-                    DestroyWindowImmediate(windowStack[i]);
+                if (i <= windowStack.Count - 1) //此判断避免嵌套调用引起索引越界
+                    DestroyWindowImmediate(windowStack[i], true, false, false);
         }
 
         public void SendMessage(string name, int messageId, object param)
         {
-            if (windowsDict.TryGetValue(name, out var window))
+            if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
-                if (window.Inst == null)
+                if (windowInfo.Inst == null)
                 {
                     Debug.LogError($"Failed handle message !!! {name} is null");
                     return;
                 }
 
-                window.Inst.HandleMessage(messageId, param);
+                windowInfo.Inst.HandleMessage(messageId, param);
             }
         }
 
-        public void RemoveWindowStack(string name) =>
+        public void Broadcast(int messageId, object param)
+        {
+            var cnt = windowInsts.Count;
+            for (var i = cnt - 1; i >= 0; i--)
+            {
+                windowInfoDict.TryGetValue(windowInsts[i], out var windowInfo);
+                windowInfo.Inst.HandleMessage(messageId, param);
+            }
+        }
+
+        public bool RemoveWindowStack(string name) =>
             windowStack.Remove(name);
 
         public bool IsWindowActive(string name) =>
-            windowsDict.TryGetValue(name, out var window) && window.IsActive;
+            windowInfoDict.TryGetValue(name, out var windowInfo) && windowInfo.IsActive;
 
         public virtual void Update()
         {
             stopwatchTimescale = Mathf.Max(Time.timeScale, 0);
-            var count = updatableWindows.Count;
-            for (var i = count - 1; i >= 0; i--)
+            var cnt = updatableWindows.Count;
+            for (var i = cnt - 1; i >= 0; i--)
                 updatableWindows[i].Inst.OnUpdate();
         }
 
-        protected virtual void InternalOpen(Window window)
+        protected virtual WindowInfo GetWindow(string name)
         {
-            Activate(window.Inst.ui);
-            window.IsActive = true;
-            window.Inst.OnEnable();
+            windowInfoDict.TryGetValue(name, out var windowInfo);
+            return windowInfo;
         }
 
-        protected virtual async Task InternalClose(Window window)
+        protected virtual void OpenLastClosedBgWindow(int index, bool popWindow)
         {
-            window.IsClosing = true;
-            window.CloseImmediate = false;
-            var ui = window.Inst.ui;
-            var duration = PlayClosingAnimation(window.Name, ui);
-            if (duration > 0)
+            for (int i = index; i >= 0; i--)
+            {
+                windowInfoDict.TryGetValue(windowStack[i], out var windowInfo);
+                if (windowInfo.IsBackground)
+                {
+                    OpenWindow(windowInfo.Name, windowInfo.Layer, false, popWindow);
+                    break;
+                }
+            }
+        }
+
+        protected virtual void InternalOpen(WindowInfo windowInfo)
+        {
+            Activate(windowInfo.Inst.ui);
+            windowInfo.IsActive = true;
+            windowInfo.Inst.OnEnable();
+        }
+
+        protected virtual async Task InternalClose(WindowInfo windowInfo)
+        {
+            windowInfo.IsClosing = true;
+            windowInfo.CloseImmediate = false;
+            var ui = windowInfo.Inst.ui;
+            float duration;
+            if ((duration = PlayCloseAnimation(windowInfo.Name, ui)) > 0)
             {
                 if (!stopwatch.IsRunning) stopwatch.Start();
                 await Task.Run(() =>
@@ -475,117 +436,55 @@ namespace UIFramework.Core
                     var durationMilliseconds = duration * 1000;
                     for (var timeSinceClose = stopwatch.ElapsedMilliseconds;
                         (stopwatch.ElapsedMilliseconds - timeSinceClose) * stopwatchTimescale < durationMilliseconds;)
-                        if (window.CloseImmediate)
+                        if (windowInfo.CloseImmediate)
                             break;
                 });
             }
 
-            if (window.CloseImmediate) return;
+            if (windowInfo.CloseImmediate) return;
 
-            window.Inst.OnDisable();
+            windowInfo.Inst.OnDisable();
             Deactivate(ui);
-            window.IsActive = false;
-            window.IsClosing = false;
+            windowInfo.IsActive = false;
+            windowInfo.IsClosing = false;
         }
 
-        protected virtual void InternalCloseImmediate(Window window)
+        protected virtual void InternalCloseImmediate(WindowInfo windowInfo)
         {
-            window.IsClosing = true;
-            window.CloseImmediate = true;
-            var ui = window.Inst.ui;
-            window.Inst.OnDisable();
+            windowInfo.IsClosing = true;
+            windowInfo.CloseImmediate = true;
+            var ui = windowInfo.Inst.ui;
+            windowInfo.Inst.OnDisable();
             Deactivate(ui);
-            window.IsActive = false;
-            window.IsClosing = false;
+            windowInfo.IsActive = false;
+            windowInfo.IsClosing = false;
         }
 
-        protected virtual void InternalDestroy(Window window)
+        protected virtual void InternalDestroy(WindowInfo windowInfo)
         {
-            var ui = window.Inst.ui;
-            window.Inst.OnDestroy();
-            Destroy(ui, window.Name, window.Dependencies);
-            window.Inst = null;
-            window.Layer = -1;
-            window.IsInstantiated = false;
-            window.IsDestroying = false;
+            var ui = windowInfo.Inst.ui;
+            windowInfo.Inst.OnDestroy();
+            Destroy(ui, windowInfo.Name, windowInfo.Dependencies);
+            windowInfo.Inst = null;
+            windowInfo.Layer = -1;
+            windowInfo.IsInstantiated = false;
+            windowInfo.IsDestroying = false;
         }
 
-        protected virtual int GetLastBackgroundWindowIndex()
+        protected virtual float PlayCloseAnimation(string name, UI ui) => -1;
+
+        protected virtual void AddWindowToLayer(WindowInfo windowInfo, int layer)
         {
-            for (var i = windowStack.Count - 1; i >= 0; i--)
-                if (windowsDict[windowStack[i]].IsBackground)
-                    return i;
-            return -1;
         }
 
-        protected virtual Window GetWindow(string name)
-        {
-            windowsDict.TryGetValue(name, out var window);
-            return window;
-        }
+        protected abstract void Activate(UI ui);
 
-        /// <summary>
-        /// WindowFactory is called when register new window
-        /// </summary>
-        /// <returns></returns>
-        protected virtual Window WindowFactory() => new Window();
+        protected abstract void Deactivate(UI ui);
 
-        private void PopWindowStack(int beginIndex, int endIndex)
-        {
-            var limit = windowStack.Count - 1;
-            var min = Mathf.Clamp(Math.Min(beginIndex, endIndex), 0, limit);
-            var max = Mathf.Clamp(Math.Max(beginIndex, endIndex), 0, limit);
-            for (var i = min; i <= max; i++)
-            {
-                var name = windowStack[i];
-                var window = windowsDict[name];
-                OpenWindow(name, window.Layer, false, false);
-            }
-        }
+        protected abstract UI Instantiate(string name, string[] dependencies);
 
-        private void ClearWindowStack(int beginIndex, int endIndex)
-        {
-            var limit = windowStack.Count - 1;
-            var min = Mathf.Clamp(Math.Min(beginIndex, endIndex), 0, limit);
-            var max = Mathf.Clamp(Math.Max(beginIndex, endIndex), 0, limit);
-            for (var i = max; i >= min; i--)
-                windowStack.RemoveAt(i);
-        }
+        protected abstract void Destroy(UI ui, string name, string[] dependencies);
 
-        protected abstract void Activate(TUIObj ui);
-
-        protected abstract void Deactivate(TUIObj ui);
-
-        /// <summary>
-        /// 播放窗口关闭动画
-        /// 若返回值小于0则表示窗口没有关闭动画
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="ui"></param>
-        /// <returns>返回播放关闭动画的时间单位 秒</returns>
-        protected virtual float PlayClosingAnimation(string name, TUIObj ui) => -1;
-
-        /// <summary>
-        /// UI的层级
-        /// </summary>
-        /// <param name="ui"></param>
-        /// <param name="layer"></param>
-        protected abstract void AddWindowToLayer(TUIObj ui, int layer);
-
-        /// <summary>
-        /// 根据项目实际资源加载框架重写创建UI的逻辑
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="dependencies"></param>
-        /// <returns></returns>
-        protected abstract TUIObj Instantiate(string name, string[] dependencies);
-
-        /// <summary>
-        /// 销毁UI物体卸载资源以及依赖资源(可选)
-        /// </summary>
-        /// <param name="ui"></param>
-        /// <param name="name"></param>
-        /// <param name="dependencies"></param>
-        protected abstract void Destroy(TUIObj ui, string name, string[] dependencies);
+        protected virtual WindowInfo WindowFactory() => new WindowInfo();
     }
 }

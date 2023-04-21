@@ -1,4 +1,4 @@
-﻿// #define FAIRY_GUI
+﻿#define FAIRY_GUI
 
 using System;
 using System.Collections.Generic;
@@ -6,7 +6,6 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
-
 #if FAIRY_GUI
 using FairyGUI;
 
@@ -122,7 +121,6 @@ public static class GenUIComInitScript
 
         classBuilder.Append($"public class {scriptName}\n" + "{\n");
         classBuilder.Append($"\tpublic GComponent {RootComName};\n");
-
         constructorBuilder.Append($"\n\tpublic {scriptName}(GComponent {ParamName})\n" + "\t{\n");
         var duplicate = new Dictionary<string, int>();
         foreach (var child in com.GetChildren())
@@ -138,7 +136,8 @@ public static class GenUIComInitScript
             {
                 if (child.asCom.numChildren > 1)
                 {
-                    fieldType = $"{pkgName}_{child.name}";
+                    var asset = UIPackage.GetItemByURL(child.resourceURL);
+                    fieldType = $"{pkgName}_{(asset != null ? asset.name : child.name)}";
                     statement = $"new {fieldType}({ParamName}.GetChild(\"{child.name}\").asCom)";
                     GenCsScript(pkgName, fieldType, child);
                 }
@@ -161,17 +160,17 @@ public static class GenUIComInitScript
             }
         }
 
-        var transitions = com.Transitions;
-        if (transitions != null)
-        {
-            foreach (var transition in transitions)
-            {
-                var fieldName = $"{transition.name}{TransSuffix}";
-                classBuilder.Append($"\tpublic Transition {fieldName};\n");
-                statementBuilder.Append(
-                    $"\t\tthis.{fieldName} = {ParamName}.GetTransition(\"{transition.name}\");\n");
-            }
-        }
+        // var transitions = com.Transitions;
+        // if (transitions != null)
+        // {
+        //     foreach (var transition in transitions)
+        //     {
+        //         var fieldName = $"{transition.name}{TransSuffix}";
+        //         classBuilder.Append($"\tpublic Transition {fieldName};\n");
+        //         statementBuilder.Append(
+        //             $"\t\tthis.{fieldName} = {ParamName}.GetTransition(\"{transition.name}\");\n");
+        //     }
+        // }
 
         statementBuilder.Append($"\t\tthis.{RootComName} = {ParamName};\n");
 
@@ -217,12 +216,13 @@ public static class GenUIComInitScript
             if (type == typeof(GComponent))
             {
                 if (child.asCom.numChildren > 0)
-            {
-                var childModule = $"{pkgName}_{child.name}";
-                GenLuaScript(pkgName, childModule, child);
+                {
+                    var asset = UIPackage.GetItemByURL(child.resourceURL);
+                    var childModule = $"{pkgName}_{(asset != null ? asset.name : child.name)}";
+                    GenLuaScript(pkgName, childModule, child);
                     typeName = childModule;
                     assignStatement = $"require '{childModule}'.{LuaFuncName}({ParamName}:GetChild(\"{child.name}\"))";
-            }
+                }
             }
 
             annotationBuilder.Append($"\t---@field {child.name} {typeName}\n");
@@ -241,18 +241,17 @@ public static class GenUIComInitScript
             }
         }
 
-        var transitions = com.Transitions;
-        if (transitions != null)
-        {
-            foreach (var transition in transitions)
-            {
-                var fieldName = $"{transition.name}{TransSuffix}";
-                annotationBuilder.Append($"\t---@field {fieldName} FairyGUI.Transition\n");
-                statementBuilder.Append(
-                    $"\t{LuaInstName}.{fieldName} = {ParamName}:GetTransition(\"{transition.name}\")\n");
-            }
-        }
-
+        // var transitions = com.Transitions;
+        // if (transitions != null)
+        // {
+        //     foreach (var transition in transitions)
+        //     {
+        //         var fieldName = $"{transition.name}{TransSuffix}";
+        //         annotationBuilder.Append($"\t---@field {fieldName} FairyGUI.Transition\n");
+        //         statementBuilder.Append(
+        //             $"\t{LuaInstName}.{fieldName} = {ParamName}:GetTransition(\"{transition.name}\")\n");
+        //     }
+        // }
         statementBuilder.Append($"\t{LuaInstName}.{RootComName} = {ParamName}\n");
         statementBuilder.Append($"\treturn {LuaInstName}\n");
         statementBuilder.Append("end\n");

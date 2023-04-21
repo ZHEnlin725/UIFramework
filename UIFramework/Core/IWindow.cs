@@ -1,16 +1,16 @@
 ﻿namespace UIFramework.Core
 {
-    public interface IWindow<TUIObj>
+    public interface IWindow<UI>
     {
         /// <summary>
         /// UI Object
         /// </summary>
-        TUIObj ui { get; }
+        UI ui { get; }
 
         /// <summary>
         /// OnCreate is called after instantiate
         /// </summary>
-        void OnCreate(TUIObj ui);
+        void OnCreate(UI ui);
 
         /// <summary>
         /// OnEnable is called after activate uiObj

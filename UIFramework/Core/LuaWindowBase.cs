@@ -7,8 +7,8 @@ namespace UIFramework.Core
     /// Lua窗口基类
     /// 根据实际使用的Lua框架重写
     /// </summary>
-    /// <typeparam name="TUIObj"></typeparam>
-    public abstract class LuaWindowBase<TUIObj> : WindowBase<TUIObj>
+    /// <typeparam name="UI"></typeparam>
+    public abstract class LuaWindowBase<UI> : WindowBase<UI>
     {
         protected object luaTable;
 
@@ -58,7 +58,7 @@ namespace UIFramework.Core
             handleMessageCallback = null;
         }
 
-        public override void OnCreate(TUIObj ui)
+        public override void OnCreate(UI ui)
         {
             base.OnCreate(ui);
 
