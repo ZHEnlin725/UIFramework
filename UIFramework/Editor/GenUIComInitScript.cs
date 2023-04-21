@@ -20,6 +20,8 @@ public static class GenUIComInitScript
 
     private const string RootComName = "uiCom";
 
+    private const bool LuaFullpath = true;
+
     #region Fairy UI
 
 #if FAIRY_GUI
@@ -221,7 +223,8 @@ public static class GenUIComInitScript
                     var childModule = $"{pkgName}_{(asset != null ? asset.name : child.name)}";
                     GenLuaScript(pkgName, childModule, child);
                     typeName = childModule;
-                    assignStatement = $"require '{childModule}'.{LuaFuncName}({ParamName}:GetChild(\"{child.name}\"))";
+                    var module = LuaFullpath ? $"UI.Gen.{pkgName}.{childModule}" : childModule;
+                    assignStatement = $"require '{module}'.{LuaFuncName}({ParamName}:GetChild(\"{child.name}\"))";
                 }
             }
 
@@ -512,7 +515,8 @@ public static class GenUIComInitScript
                     if (fieldCount >= 1) fieldName += cmpNameHash[fieldType];
                     var subModule = $"{fieldName}{LuaModuleSuffix}";
                     fieldAnnotation = $"\t---@field {field} {fieldName}\n";
-                    statement = $"require '{subModule}':{LuaFuncName}({ParamName}:Find(\"{child.name}\"))";
+                    var module = LuaFullpath ? $"UI.Gen.{subModule}" : subModule;
+                    statement = $"require '{module}':{LuaFuncName}({ParamName}:Find(\"{child.name}\"))";
                     GenLuaScript(fieldName, subModule, child.gameObject);
                 }
             }
