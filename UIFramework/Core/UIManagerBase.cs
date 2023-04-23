@@ -43,6 +43,20 @@ namespace UIFramework.Core
             /// 是否处于正在销毁
             /// </summary>
             public bool IsDestroying;
+
+            public Action WaitForClose;
+
+            public WindowInfo()
+            {
+                WaitForClose = () =>
+                {
+                    while (IsClosing)
+                    {
+                        // ignore
+                        // Debug.LogError($"Waiting for close {Name}");
+                    }
+                };
+            }
         }
 
         private readonly List<string> windowStack = new List<string>();
@@ -151,7 +165,6 @@ namespace UIFramework.Core
                     if (methodInfo.DeclaringType != baseMethodInfo?.DeclaringType)
                         //重写过OnUpdate的子类说明需要每帧调用OnUpdate
                         windowInfo.IsUpdatable = true;
-
                     var ui = Instantiate(windowInfo.Name, windowInfo.Dependencies);
                     inst.OnCreate(ui);
                     Deactivate(ui);
@@ -168,7 +181,7 @@ namespace UIFramework.Core
 
                 windowInfo.ActiveTicks = Time.time;
 
-                AddWindowToLayer(windowInfo, layer);
+                AddWindowToLayer(windowInfo.Inst.ui, layer);
 
                 windowInfo.Layer = layer;
 
@@ -242,12 +255,16 @@ namespace UIFramework.Core
                             windowStack.RemoveAt(index);
                             if (windowInfo.IsBackground)
                             {
-                                for (int i = index; i < windowStack.Count; i++)
+                                var cnt = windowStack.Count;
+                                for (var i = index; i < cnt; i++)
                                 {
-                                    if (!windowInfoDict[windowStack[i]].IsBackground)
+                                    if (windowInfoDict[windowStack[i]].IsBackground)
                                     {
-                                        windowStack.RemoveAt(i--);
+                                        break;
                                     }
+
+                                    windowStack.RemoveAt(i--);
+                                    cnt--;
                                 }
                             }
                         }
@@ -256,18 +273,18 @@ namespace UIFramework.Core
 
                 if (openLastClosedBgWin && windowInfo.IsBackground)
                 {
-                    var flag = true;
                     var cnt = windowStack.Count;
-                    for (int i = index + 1; i < cnt; i++)
+                    for (var i = index + 1; i < cnt; i++)
                     {
-                        if (windowInfoDict[windowStack[i]].IsBackground)
+                        var info = windowInfoDict[windowStack[i]];
+                        if (info.IsBackground && info.IsActive)
                         {
-                            flag = false;
+                            openLastClosedBgWin = false;
                             break;
                         }
                     }
 
-                    if (flag)
+                    if (openLastClosedBgWin)
                     {
                         OpenLastClosedBgWindow(index - 1, true);
                     }
@@ -316,12 +333,16 @@ namespace UIFramework.Core
                             windowStack.RemoveAt(index);
                             if (windowInfo.IsBackground)
                             {
-                                for (int i = index; i < windowStack.Count; i++)
+                                var cnt = windowStack.Count;
+                                for (var i = index; i < cnt; i++)
                                 {
-                                    if (!windowInfoDict[windowStack[i]].IsBackground)
+                                    if (windowInfoDict[windowStack[i]].IsBackground)
                                     {
-                                        windowStack.RemoveAt(i--);
+                                        break;
                                     }
+
+                                    windowStack.RemoveAt(i--);
+                                    cnt--;
                                 }
                             }
                         }
@@ -330,18 +351,18 @@ namespace UIFramework.Core
 
                 if (openLastClosedBgWin && windowInfo.IsBackground)
                 {
-                    var flag = true;
                     var cnt = windowStack.Count;
-                    for (int i = index + 1; i < cnt; i++)
+                    for (var i = index + 1; i < cnt; i++)
                     {
-                        if (windowInfoDict[windowStack[i]].IsBackground)
+                        var info = windowInfoDict[windowStack[i]];
+                        if (info.IsBackground && info.IsActive)
                         {
-                            flag = false;
+                            openLastClosedBgWin = false;
                             break;
                         }
                     }
 
-                    if (flag)
+                    if (openLastClosedBgWin)
                     {
                         OpenLastClosedBgWindow(index - 1, true);
                     }
@@ -351,13 +372,7 @@ namespace UIFramework.Core
                 {
                     if (windowInfo.IsClosing)
                     {
-                        await Task.Run(() =>
-                        {
-                            while (windowInfo.IsClosing)
-                            {
-                                // ignore
-                            }
-                        });
+                        await Task.Run(windowInfo.WaitForClose);
                     }
                     else
                     {
@@ -424,7 +439,7 @@ namespace UIFramework.Core
             for (var i = cnt - 1; i >= 0; i--)
                 updatableWindows[i].Inst.OnUpdate();
 
-            for (int i = 0; i < windowInsts.Count; i++)
+            for (var i = 0; i < windowInsts.Count; i++)
             {
                 var windowInfo = windowInsts[i];
                 if (!windowInfo.IsActive && (Time.time - windowInfo.ActiveTicks) > DestroyThresholdSeconds)
@@ -443,7 +458,7 @@ namespace UIFramework.Core
 
         protected virtual void OpenLastClosedBgWindow(int index, bool popWindow)
         {
-            for (int i = index; i >= 0; i--)
+            for (var i = index; i >= 0; i--)
             {
                 var windowInfo = windowInfoDict[windowStack[i]];
                 if (windowInfo.IsBackground)
@@ -492,9 +507,9 @@ namespace UIFramework.Core
         /// <summary>
         /// 添加UI到指定层级 具体层级由子类实现
         /// </summary>
-        /// <param name="windowInfo"></param>
+        /// <param name="ui"></param>
         /// <param name="layer"></param>
-        protected virtual void AddWindowToLayer(WindowInfo windowInfo, int layer)
+        protected virtual void AddWindowToLayer(UI ui, int layer)
         {
         }
 
