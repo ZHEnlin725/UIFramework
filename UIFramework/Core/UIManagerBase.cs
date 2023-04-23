@@ -270,8 +270,7 @@ namespace UIFramework.Core
                             windowStack.RemoveAt(index);
                             if (windowInfo.IsBackground)
                             {
-                                var cnt = windowStack.Count;
-                                for (var i = index; i < cnt; i++)
+                                for (var i = index; i < windowStack.Count; i++)
                                 {
                                     if (windowInfoDict[windowStack[i]].IsBackground)
                                     {
@@ -279,7 +278,6 @@ namespace UIFramework.Core
                                     }
 
                                     windowStack.RemoveAt(i--);
-                                    cnt--;
                                 }
                             }
                         }
@@ -363,8 +361,7 @@ namespace UIFramework.Core
                             windowStack.RemoveAt(index);
                             if (windowInfo.IsBackground)
                             {
-                                var cnt = windowStack.Count;
-                                for (var i = index; i < cnt; i++)
+                                for (var i = index; i < windowStack.Count; i++)
                                 {
                                     if (windowInfoDict[windowStack[i]].IsBackground)
                                     {
@@ -372,7 +369,6 @@ namespace UIFramework.Core
                                     }
 
                                     windowStack.RemoveAt(i--);
-                                    cnt--;
                                 }
                             }
                         }
@@ -472,7 +468,11 @@ namespace UIFramework.Core
             for (var i = 0; i < windowInsts.Count; i++)
             {
                 var windowInfo = windowInsts[i];
-                if (!windowInfo.IsActive && (Time.time - windowInfo.ActiveTicks) > DestroyThresholdSeconds)
+                if (windowInfo.IsActive)
+                {
+                    windowInfo.ActiveTicks = Time.time;
+                }
+                else if (Time.time - windowInfo.ActiveTicks > DestroyThresholdSeconds)
                 {
                     DestroyWindow(windowInfo.Name, false, false, false, false);
                     i--;
