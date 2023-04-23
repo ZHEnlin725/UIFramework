@@ -461,11 +461,10 @@ namespace UIFramework.Core
 
         public virtual void Update()
         {
-            var cnt = updatableWindows.Count;
-            for (var i = cnt - 1; i >= 0; i--)
+            for (var i = updatableWindows.Count - 1; i >= 0; i--)
                 updatableWindows[i].Inst.OnUpdate();
 
-            for (var i = 0; i < windowInsts.Count; i++)
+            for (var i = windowInsts.Count - 1; i >= 0; i--)
             {
                 var windowInfo = windowInsts[i];
                 if (windowInfo.IsActive)
@@ -475,7 +474,6 @@ namespace UIFramework.Core
                 else if (Time.time - windowInfo.ActiveTicks > DestroyThresholdSeconds)
                 {
                     DestroyWindow(windowInfo.Name, false, false, false, false);
-                    i--;
                 }
             }
         }
