@@ -246,6 +246,21 @@ namespace UIFramework.Core
 
                 var index = windowStack.IndexOf(name);
 
+                if (windowInfo.IsBackground)
+                {
+                    var cnt = windowStack.Count;
+                    if (index >= 0 && index < cnt - 1)
+                    {
+                        for (var i = index + 1; i < cnt; i++)
+                        {
+                            var info = windowInfoDict[windowStack[i]];
+                            if (info.IsBackground)
+                                break;
+                            CloseWindow(info.Name, false, false, false, playCloseAnim);
+                        }
+                    }
+                }
+
                 if (removeWindowStack)
                 {
                     if (index >= 0)
@@ -323,6 +338,21 @@ namespace UIFramework.Core
                 windowInfo.IsDestroying = true;
 
                 var index = windowStack.IndexOf(name);
+
+                if (windowInfo.IsBackground)
+                {
+                    var cnt = windowStack.Count;
+                    if (index >= 0 && index < cnt - 1)
+                    {
+                        for (var i = index + 1; i < cnt; i++)
+                        {
+                            var info = windowInfoDict[windowStack[i]];
+                            if (info.IsBackground)
+                                break;
+                            DestroyWindow(info.Name, false, false, false, playCloseAnim);
+                        }
+                    }
+                }
 
                 if (removeWindowStack)
                 {
