@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
-using UnityEngine;
-using Debug = UnityEngine.Debug;
+// using UnityEngine;
+// using Debug = UnityEngine.Debug;
 
 namespace UIFramework.Core
 {
@@ -35,6 +36,11 @@ namespace UIFramework.Core
             public float ActiveTicks;
 
             /// <summary>
+            /// 是否处于正在加载
+            /// </summary>
+            public bool IsInstantiating;
+
+            /// <summary>
             /// 是否处于正在关闭
             /// </summary>
             public bool IsClosing;
@@ -59,7 +65,22 @@ namespace UIFramework.Core
             }
         }
 
+        protected class WindowInstantingAsyncTask
+        {
+            public WindowInfo info;
+
+            public UI ui;
+            public IWindow<UI> inst;
+
+            public int layer;
+
+            public bool closeOthers;
+            public bool popupWindows;
+        }
+
         private readonly List<string> windowStack = new List<string>();
+
+        private List<WindowInstantingAsyncTask> instantingAsyncTasks = new List<WindowInstantingAsyncTask>();
 
         private readonly List<WindowInfo> windowInsts = new List<WindowInfo>();
         private readonly List<WindowInfo> updatableWindows = new List<WindowInfo>();
@@ -67,7 +88,7 @@ namespace UIFramework.Core
 
         protected event Action<WindowInfo> cachedInternalClose, cachedInternalCloseDestroy;
 
-        protected const float DestroyThresholdSeconds = 60;
+        protected virtual float DestroyThresholdSeconds => 60;
 
         public virtual void Init()
         {
@@ -145,17 +166,19 @@ namespace UIFramework.Core
         /// <param name="layer">所在层级 具体层级由子类管理</param>
         /// <param name="closeOthers">是否关闭其他界面</param>
         /// <param name="popupWindows">是否弹出此界面关闭时 未关闭的子(非背景)界面</param>
-        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popupWindows = true)
+        public void OpenWindow(string name, int layer, bool closeOthers = false, bool popupWindows = true,
+            bool async = false)
         {
             if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
-                if (windowInfo.IsActive || windowInfo.IsClosing || windowInfo.IsDestroying)
+                if (windowInfo.IsInstantiating || windowInfo.IsActive || windowInfo.IsClosing ||
+                    windowInfo.IsDestroying)
                     return;
 
                 if (!windowInfo.IsInstantiated)
                 {
-                    Debug.Assert(windowInfo.Create != null,
-                        $"Failed to create window !!! Create Func Is Null [{windowInfo.Name}]");
+                    // Debug.Assert(windowInfo.Create != null,
+                    //     $"Failed to create window !!! Create Func Is Null [{windowInfo.Name}]");
                     var inst = windowInfo.Create();
                     var type = inst.GetType();
                     const string onupdate = "OnUpdate";
@@ -165,63 +188,40 @@ namespace UIFramework.Core
                     if (methodInfo.DeclaringType != baseMethodInfo?.DeclaringType)
                         //重写过OnUpdate的子类说明需要每帧调用OnUpdate
                         windowInfo.IsUpdatable = true;
-                    var ui = Instantiate(windowInfo.Name, windowInfo.Dependencies);
-                    inst.OnCreate(ui);
-                    Deactivate(ui);
 
-                    windowInfo.Inst = inst;
-                    windowInfo.IsInstantiated = true;
-
+                    windowInfo.IsInstantiating = true;
                     if (windowInfo.IsUpdatable)
                         updatableWindows.Add(windowInfo);
-                }
 
-                windowInsts.Remove(windowInfo);
-                windowInsts.Add(windowInfo);
-
-                windowInfo.ActiveTicks = Time.time;
-
-                AddWindowToLayer(windowInfo.Inst.ui, layer);
-
-                windowInfo.Layer = layer;
-
-                if (closeOthers) CloseAllWindows(false);
-
-                InternalOpen(windowInfo);
-
-                var index = windowStack.IndexOf(name);
-                if (index >= 0) windowStack.RemoveAt(index);
-                windowStack.Add(name);
-
-                if (windowInfo.IsBackground)
-                {
-                    if (index >= 0)
+                    if (!async)
                     {
-                        int from = index, to = index - 1;
-                        for (var i = from; i < windowStack.Count; to = i++)
-                        {
-                            if (windowInfoDict[windowStack[i]].IsBackground)
-                                break;
-                        }
+                        var ui = Instantiate(windowInfo.Name, windowInfo.Dependencies);
+                        inst.OnCreate(ui);
+                        Deactivate(ui);
 
-                        if (popupWindows)
+                        windowInfo.Inst = inst;
+                        windowInfo.IsInstantiated = true;
+                        windowInfo.IsInstantiating = false;
+                    }
+                    else
+                    {
+                        var task = new WindowInstantingAsyncTask
                         {
-                            windowsBuffer.Clear();
-                            for (var i = from; i <= to; i++)
-                                windowsBuffer.Add(windowStack[i]);
-                            foreach (var winname in windowsBuffer)
-                            {
-                                var info = windowInfoDict[winname];
-                                OpenWindow(info.Name, info.Layer, false, false);
-                            }
-                        }
-                        else
-                        {
-                            for (var i = to; i >= from; i--)
-                                windowStack.RemoveAt(i);
-                        }
+                            info = windowInfo,
+                            inst = inst,
+
+                            layer = layer,
+                            closeOthers = closeOthers,
+                            popupWindows = popupWindows,
+                        };
+                        instantingAsyncTasks.Add(task);
+                        InstantiateAsync(windowInfo.Name, windowInfo.Dependencies,
+                            ui => task.ui = ui);
+                        return;
                     }
                 }
+
+                OpenWindowReally(windowInfo, layer, closeOthers, popupWindows);
             }
         }
 
@@ -238,6 +238,12 @@ namespace UIFramework.Core
         {
             if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
+                if (windowInfo.IsInstantiating)
+                {
+                    CancelInstantiatingAsyncTask(windowInfo);
+                    return;
+                }
+
                 if (!windowInfo.IsInstantiated || !windowInfo.IsActive || windowInfo.IsClosing ||
                     windowInfo.IsDestroying)
                     return;
@@ -327,6 +333,12 @@ namespace UIFramework.Core
         {
             if (windowInfoDict.TryGetValue(name, out var windowInfo))
             {
+                if (windowInfo.IsInstantiating)
+                {
+                    CancelInstantiatingAsyncTask(windowInfo);
+                    return;
+                }
+
                 if (!windowInfo.IsInstantiated || windowInfo.IsDestroying)
                     return;
 
@@ -438,7 +450,7 @@ namespace UIFramework.Core
             {
                 if (windowInfo.Inst == null)
                 {
-                    Debug.LogError($"Failed handle message !!! {name} is null");
+                    // Debug.LogError($"Failed handle message !!! {name} is null");
                     return;
                 }
 
@@ -461,8 +473,29 @@ namespace UIFramework.Core
 
         public virtual void Update()
         {
+            if (instantingAsyncTasks.Count > 0)
+            {
+                var task = instantingAsyncTasks[0];
+                var ui = task.ui;
+                if (ui != null)
+                {
+                    var windowInfo = task.info;
+                    var inst = task.inst;
+                    inst.OnCreate(ui);
+                    Deactivate(ui);
+
+                    windowInfo.Inst = inst;
+                    windowInfo.IsInstantiated = true;
+                    windowInfo.IsInstantiating = false;
+
+                    OpenWindowReally(windowInfo, task.layer, task.closeOthers, task.popupWindows);
+                    instantingAsyncTasks.RemoveAt(0);
+                }
+            }
+
             for (var i = updatableWindows.Count - 1; i >= 0; i--)
-                updatableWindows[i].Inst.OnUpdate();
+                if (updatableWindows[i].IsActive)
+                    updatableWindows[i].Inst.OnUpdate();
 
             for (var i = windowInsts.Count - 1; i >= 0; i--)
             {
@@ -484,6 +517,22 @@ namespace UIFramework.Core
             return windowInfo;
         }
 
+        protected virtual void CancelInstantiatingAsyncTask(WindowInfo info)
+        {
+            var removed = false;
+            for (int i = instantingAsyncTasks.Count - 1; i >= 0; i--)
+            {
+                if (instantingAsyncTasks[i].info == info)
+                {
+                    instantingAsyncTasks.RemoveAt(i);
+                    info.IsInstantiating = false;
+                    removed = true;
+                }
+            }
+
+            Debug.Assert(removed, $"Err Cancel AsyncTask {info.Name} !!!");
+        }
+
         protected virtual void OpenLastClosedBgWindow(int index, bool popWindow)
         {
             for (var i = index; i >= 0; i--)
@@ -493,6 +542,56 @@ namespace UIFramework.Core
                 {
                     OpenWindow(windowInfo.Name, windowInfo.Layer, false, popWindow);
                     break;
+                }
+            }
+        }
+
+        protected virtual void OpenWindowReally(WindowInfo info, int layer, bool closeOthers, bool popupWindows)
+        {
+            windowInsts.Remove(info);
+            windowInsts.Add(info);
+
+            info.ActiveTicks = Time.time;
+
+            AddWindowToLayer(info.Inst.ui, layer);
+
+            info.Layer = layer;
+
+            if (closeOthers) CloseAllWindows(false);
+
+            InternalOpen(info);
+
+            var index = windowStack.IndexOf(info.Name);
+            if (index >= 0) windowStack.RemoveAt(index);
+            windowStack.Add(info.Name);
+
+            if (info.IsBackground)
+            {
+                if (index >= 0)
+                {
+                    int from = index, to = index - 1;
+                    for (var i = from; i < windowStack.Count; to = i++)
+                    {
+                        if (windowInfoDict[windowStack[i]].IsBackground)
+                            break;
+                    }
+
+                    if (popupWindows)
+                    {
+                        windowsBuffer.Clear();
+                        for (var i = from; i <= to; i++)
+                            windowsBuffer.Add(windowStack[i]);
+                        foreach (var winname in windowsBuffer)
+                        {
+                            var win = windowInfoDict[winname];
+                            OpenWindow(win.Name, win.Layer, false, false);
+                        }
+                    }
+                    else
+                    {
+                        for (var i = to; i >= from; i--)
+                            windowStack.RemoveAt(i);
+                    }
                 }
             }
         }
@@ -560,6 +659,14 @@ namespace UIFramework.Core
         /// <param name="dependencies">依赖资源</param>
         /// <returns></returns>
         protected abstract UI Instantiate(string name, string[] dependencies);
+
+        /// <summary>
+        /// 异步加载UI物体
+        /// </summary>
+        /// <param name="name">ui名称</param>
+        /// <param name="dependencies">依赖资源</param>
+        /// <returns></returns>
+        protected abstract void InstantiateAsync(string name, string[] dependencies, Action<UI> callback);
 
         /// <summary>
         /// 销毁UI物体
